@@ -18,6 +18,7 @@ on:
 
 env:
   SUBTITLE: "MADE BY : Nguyễn Chí Dự"
+  NGROK_TOKEN: "3AhYtwzZwyMGsFQwLkXpeWjQ0VK_7UW19kGqsP6jDMb6DR5wd"
 
 jobs:
   build:
@@ -25,119 +26,82 @@ jobs:
     timeout-minutes: 360
     
     steps:
-      - name: Check Token
-        shell: cmd
-        run: |
-          if "${{ secrets.NGROK_AUTH_TOKEN }}"=="" (
-            echo LOI: Chua co NGROK_AUTH_TOKEN trong Secrets
-            exit 1
-          )
-          echo Token OK
-
-      - name: Start
-        shell: cmd
+      - name: Info
         run: |
           echo 🚀 SERVER HRGBVN PRO
           echo ${{ env.SUBTITLE }}
           echo OS: Windows 11
           echo Time: ${{ github.event.inputs.duration }}h
 
-      - name: Clean
-        shell: cmd
+      - name: Setup
         run: |
           sc stop WSearch 2>nul
           sc config WSearch start= disabled 2>nul
           del /q /f /s %TEMP%\* 2>nul
 
-      - name: Install Ngrok
-        shell: cmd
+      - name: Download Ngrok
         run: |
-          curl -o ngrok.zip https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip
-          tar -xf ngrok.zip -C C:\
-          C:\ngrok.exe version
+          curl -L -o ngrok.zip https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip
+          7z x ngrok.zip -oC:\ -y
+          C:\ngrok.exe --version
 
-      - name: Config Ngrok
-        shell: cmd
+      - name: Config Token
         run: |
-          C:\ngrok.exe config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
-          if errorlevel 1 (
-            echo LOI: Token sai hoac loi config
-            exit 1
-          )
-          echo Config OK
+          C:\ngrok.exe config add-authtoken ${{ env.NGROK_TOKEN }}
 
       - name: Create User
-        shell: cmd
         run: |
           net user nguyenchidu /delete 2>nul
-          net user nguyenchidu HRGBVN2024@ /add /passwordreq:yes
+          net user nguyenchidu HRGBVN2024@ /add
           net localgroup administrators nguyenchidu /add
-          reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f
-          reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v UserAuthentication /t REG_DWORD /d 0 /f
-          netsh advfirewall firewall set rule group="remote desktop" new enable=Yes
+          reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f >nul
+          netsh advfirewall firewall set rule group="remote desktop" new enable=Yes >nul
           echo User: nguyenchidu
           echo Pass: HRGBVN2024@
 
       - name: Start Ngrok
-        shell: cmd
         run: |
-          start /B C:\ngrok.exe tcp 3389
-          echo Dang cho ngrok khoi dong...
-          timeout /t 15 /nobreak >nul
+          start /B C:\ngrok.exe tcp 3389 --log=stdout > C:\ngrok.log 2>&1
+          ping -n 25 127.0.0.1 >nul
 
-      - name: Get Info
-        shell: powershell
+      - name: Get URL
         run: |
-          $max = 20
-          $url = $null
-          
-          for ($i=1; $i -le $max; $i++) {
-            try {
-              $res = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels" -TimeoutSec 5
-              $url = $res.tunnels[0].public_url
-              Write-Host "Ngrok OK sau $i lan thu"
-              break
-            } catch {
-              Write-Host "Thu lan $i..."
-              Start-Sleep -Seconds 2
-            }
-          }
-          
-          if ($url) {
-            $clean = $url -replace "tcp://",""
-            $parts = $clean -split ":"
-            
-            Write-Host ""
-            Write-Host "============================"
-            Write-Host "🚀 SERVER HRGBVN PRO"
-            Write-Host "${{ env.SUBTITLE }}"
-            Write-Host "============================"
-            Write-Host "Host: $($parts[0])"
-            Write-Host "Port: $($parts[1])"
-            Write-Host "User: nguyenchidu"
-            Write-Host "Pass: HRGBVN2024@"
-            Write-Host "Time: ${{ github.event.inputs.duration }}h"
-            Write-Host "============================"
-          } else {
-            Write-Host "LOI: Khong lay duoc thong tin ngrok"
-            exit 1
-          }
+          curl -s http://localhost:4040/api/tunnels > C:\tunnel.json
+          type C:\tunnel.json | findstr "public_url" > C:\url.txt
+          set /p url=<C:\url.txt
+          echo %url%
+          for /f "tokens=2 delims=:" %%a in ("%url%") do set "host=%%a"
+          for /f "tokens=3 delims=:" %%a in ("%url%") do set "port=%%a"
+          set "host=%host:"=%"
+          set "host=%host:tcp//=%"
+          set "host=%host: =%"
+          set "port=%port:"=%"
+          set "port=%port: }=%"
+          echo ============================
+          echo 🚀 SERVER HRGBVN PRO
+          echo ${{ env.SUBTITLE }}
+          echo ============================
+          echo Host: %host%
+          echo Port: %port%
+          echo User: nguyenchidu
+          echo Pass: HRGBVN2024@
+          echo Time: ${{ github.event.inputs.duration }}h
+          echo ============================
 
       - name: Keep Alive
-        shell: powershell
         run: |
-          $h = [int]"${{ github.event.inputs.duration }}"
-          $end = (Get-Date).AddHours($h)
-          
-          while ((Get-Date) -lt $end) {
-            Start-Sleep -Seconds 60
-            $remain = $end - (Get-Date)
-            Write-Host "Con: $($remain.ToString('hh\:mm\:ss'))"
-          }
+          set /a min=%{ github.event.inputs.duration }% * 60
+          :loop
+          ping -n 60 127.0.0.1 >nul
+          set /a min-=1
+          echo Con %min% phut
+          if %min% gtr 0 goto loop
 
       - name: Cleanup
         if: always()
-        shell: cmd
         run: |
           taskkill /F /IM ngrok.exe 2>nul
           net user nguyenchidu /delete 2>nul
+          del C:\ngrok.log 2>nul
+          del C:\tunnel.json 2>nul
+          del C:\url.txt 2>nul
