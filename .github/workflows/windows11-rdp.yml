@@ -25,71 +25,55 @@ jobs:
     timeout-minutes: 360
     
     steps:
-      - name: 🚀 Khởi động Server HRGBVN PRO
+      - name: 🚀 Khởi động
         run: |
-          echo "=================================="
-          echo "  server HRGBVN PRO 🚀"
-          echo "  ${{ env.SUBTITLE }}"
-          echo "=================================="
-          echo "⏰ Thời gian: ${{ github.event.inputs.duration }}h | 💻 Windows 11"
+          echo "server HRGBVN PRO 🚀"
+          echo "${{ env.SUBTITLE }}"
+          echo "Thoi gian: ${{ github.event.inputs.duration }}h"
 
-      - name: ⚡ Tối ưu & Dọn dẹp SIÊU NHANH (3 giây)
+      - name: ⚡ Tắt dịch vụ nặng (1 giây)
         run: |
-          # Tắt dịch vụ nặng ngay lập tức
-          Get-Service wuauserv,WSearch,SysMain,DiagTrack -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue
-          Get-Service wuauserv,WSearch,SysMain,DiagTrack -ErrorAction SilentlyContinue | Set-Service -StartupType Disabled -ErrorAction SilentlyContinue
-          
-          # Xóa temp không đợi (chạy ngầm)
-          Start-Job { Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue } | Out-Null
-          Start-Job { Remove-Item "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue } | Out-Null
-          
-          # Giải phóng RAM ngay
-          [GC]::Collect(); [GC]::WaitForPendingFinalizers()
-          
-          Write-Host "✅ Tối ưu xong! (~3 giây)"
+          cmd /c "sc stop wuauserv & sc config wuauserv start= disabled & sc stop WSearch & sc config WSearch start= disabled & sc stop SysMain & sc config SysMain start= disabled" >nul 2>&1
+          Write-Host "✅ Tối ưu xong!"
 
-      - name: 📥 Cài Ngrok & Chrome (song song)
-        run: |
-          # Cài ngrok
-          choco install ngrok -y --no-progress --limit-output 2>$null
-          
-          # Cài chrome không hiển thị
-          choco install googlechrome -y --ignore-checksums --no-progress --limit-output 2>$null
-
-      - name: 🔐 Cấu hình RDP & User
-        run: |
-          Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server' "fDenyTSConnections" 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          
-          $pass = ConvertTo-SecureString "Hrgbvn@123" -AsPlainText -Force
-          New-LocalUser "hrgbvn" -Password $pass -FullName "HRGBVN" -ErrorAction SilentlyContinue
-          Add-LocalGroupMember "Administrators" "hrgbvn" -ErrorAction SilentlyContinue
-
-      - name: 🌐 Khởi động Ngrok
+      - name: 📥 Cài Ngrok (5 giây)
         env:
           NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
         run: |
-          ngrok config add-authtoken $env:NGROK_AUTH_TOKEN 2>$null
-          Start-Process ngrok -ArgumentList "tcp 3389" -WindowStyle Hidden
-          Start-Sleep 3
+          # Tải ngrok trực tiếp, không qua choco
+          Invoke-WebRequest "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile "ngrok.zip" -UseBasicParsing
+          Expand-Archive "ngrok.zip" -DestinationPath "." -Force
+          .\ngrok.exe config add-authtoken $env:NGROK_AUTH_TOKEN 2>$null
 
-      - name: 📋 Hiển thị thông tin kết nối
+      - name: 🔐 Bật RDP + Tạo User (2 giây)
         run: |
+          # Bật RDP
+          reg add "HKLM\System\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f >nul 2>&1
+          netsh advfirewall firewall set rule group="remote desktop" new enable=yes >nul 2>&1
+          
+          # Tạo user nhanh
+          net user hrgbvn Hrgbvn@123 /add >nul 2>&1
+          net localgroup administrators hrgbvn /add >nul 2>&1
+
+      - name: 🌐 Chạy Ngrok + Hiện Info (3 giây)
+        run: |
+          Start-Process .\ngrok.exe -ArgumentList "tcp 3389" -WindowStyle Hidden
+          Start-Sleep 3
+          
           Write-Host "`n=================================="
           Write-Host "  🎯 KẾT NỐI RDP"
           Write-Host "=================================="
           Write-Host "👤 User: hrgbvn"
           Write-Host "🔑 Pass: Hrgbvn@123"
-          $url = (Invoke-RestMethod http://localhost:4040/api/tunnels -TimeoutSec 5).tunnels.public_url
+          $url = (Invoke-RestMethod http://localhost:4040/api/tunnels -TimeoutSec 3).tunnels.public_url
           Write-Host "🔗 URL:  $url"
           Write-Host "=================================="
 
-      - name: ⏱️ Giữ server chạy + Dọn dẹp nhẹ mỗi 15 phút
+      - name: ⏱️ Giữ server chạy
         run: |
           $h = [int]"${{ github.event.inputs.duration }}"
+          Write-Host "⏰ Dang chay $h gio..."
           for ($i = $h*60; $i -gt 0; $i--) {
-              if ($i % 15 -eq 0) { 
-                  Start-Job { [GC]::Collect() } | Out-Null  # Dọn RAM nhẹ
-              }
+              if ($i % 30 -eq 0) { [GC]::Collect() | Out-Null }
               Start-Sleep 60
           }
