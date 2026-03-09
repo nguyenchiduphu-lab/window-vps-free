@@ -47,7 +47,6 @@ jobs:
           Stop-Service WSearch -Force -ErrorAction SilentlyContinue
           Set-Service WSearch -StartupType Disabled -ErrorAction SilentlyContinue
           Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
 
       - name: Install Ngrok
         run: |
@@ -61,8 +60,7 @@ jobs:
 
       - name: Setup Ngrok
         run: |
-          $token = "${{ secrets.NGROK_AUTH_TOKEN }}"
-          C:\ngrok\ngrok.exe config add-authtoken $token
+          C:\ngrok\ngrok.exe config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
           if ($LASTEXITCODE -ne 0) {
             Write-Host "LOI: Token ngrok sai"
             exit 1
@@ -70,14 +68,29 @@ jobs:
 
       - name: Setup RDP
         run: |
-          net user HRGBVN HRGBVN2024 /add 2>$null
+          # Xoa user cu neu co
+          net user HRGBVN /delete 2>$null
+          
+          # Tao user moi voi password manh
+          $pass = "HRGBVN@Pro2024!"
+          net user HRGBVN $pass /add /passwordreq:yes
           if ($LASTEXITCODE -ne 0) {
-            Write-Host "LOI: Tao user that bai"
-            exit 1
+            Write-Host "LOI: Khong tao duoc user"
+            Write-Host "-> Thu lai sau vai giay..."
+            Start-Sleep 5
+            net user HRGBVN $pass /add
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "LOI: Van khong tao duoc user"
+              exit 1
+            }
           }
+          
           net localgroup administrators HRGBVN /add
           Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server' "fDenyTSConnections" 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          
+          # Luu pass vao file tam
+          $pass | Out-File "C:\pass.txt"
 
       - name: Start Tunnel
         run: |
@@ -91,15 +104,16 @@ jobs:
             $port = ($url -split ":")[1]
           } catch {
             Write-Host "LOI: Ngrok khong khoi dong duoc"
-            Write-Host "-> Kiem tra token"
             exit 1
           }
+          
+          $pass = Get-Content "C:\pass.txt"
           
           echo "=== THONG TIN ==="
           echo "Host: $host"
           echo "Port: $port"
           echo "User: HRGBVN"
-          echo "Pass: HRGBVN2024"
+          echo "Pass: $pass"
           echo "Time: ${{ github.event.inputs.duration }}h"
           echo "================="
 
@@ -119,3 +133,4 @@ jobs:
         run: |
           Stop-Process -Name "ngrok" -Force -ErrorAction SilentlyContinue
           net user HRGBVN /delete 2>$null
+          Remove-Item "C:\pass.txt" -ErrorAction SilentlyContinue
