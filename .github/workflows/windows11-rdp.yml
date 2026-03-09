@@ -1,104 +1,136 @@
-name: server HRGBVN PRO 🚀
+name: SERVER PREMIUM HRGBVN PRO 🚀 - Win11
 
 on:
   workflow_dispatch:
     inputs:
-      duration:
-        description: 'Thời gian chạy (giờ) - Tối đa 6h'
+      ngrok_download_url:
+        description: 'Ngrok download link'
         required: true
-        default: '1'
-        type: choice
-        options:
-          - '1'
-          - '2'
-          - '3'
-          - '4'
-          - '5'
-          - '6'
-
-env:
-  SUBTITLE: "MADE BY : Nguyễn Chí Dự"
+        default: 'https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip'
 
 jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 360
-    
+
     steps:
-      - name: 🚀 Khởi động
-        shell: cmd
+      - name: Download ngrok
         run: |
-          echo server HRGBVN PRO 🚀
-          echo MADE BY : Nguyễn Chí Dự
-          echo Thoi gian: ${{ github.event.inputs.duration }}h
+          Invoke-WebRequest -Uri "${{ github.event.inputs.ngrok_download_url }}" -OutFile ngrok.zip
+          Expand-Archive ngrok.zip -DestinationPath .
 
-      - name: ⚡ Tắt dịch vụ nặng
-        shell: cmd
-        run: |
-          sc stop wuauserv >nul 2>&1
-          sc config wuauserv start= disabled >nul 2>&1
-          sc stop WSearch >nul 2>&1
-          sc config WSearch start= disabled >nul 2>&1
-          sc stop SysMain >nul 2>&1
-          sc config SysMain start= disabled >nul 2>&1
-          echo Tối ưu xong!
-
-      - name: 📥 Cài Ngrok
-        shell: pwsh
+      - name: Auth ngrok
         env:
           NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
-        run: |
-          Invoke-WebRequest "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile "ngrok.zip"
-          Expand-Archive "ngrok.zip" -DestinationPath "." -Force
-          .\ngrok.exe config add-authtoken $env:NGROK_AUTH_TOKEN
+        run: .\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
 
-      - name: 🔐 Bật RDP + Tạo User nguyenchidu
-        shell: cmd
+      - name: Setup RDP + Max Fast Intro + Reduce Lag + Low Data Mode
         run: |
-          REM Bật RDP
-          reg add "HKLM\System\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f
-          netsh advfirewall firewall set rule group="remote desktop" new enable=yes
-          
-          REM Tạo password random 12 ký tự
-          setlocal EnableDelayedExpansion
-          set "chars=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-          set "password="
-          for /L %%i in (1,1,12) do (
-            set /a "rand=!random! %% 62"
-            for %%j in (!rand!) do set "password=!password!!chars:~%%j,1!"
-          )
-          echo PASSWORD=!password!>> %GITHUB_ENV%
-          
-          REM Tạo user nguyenchidu
-          net user nguyenchidu !password! /add
-          net localgroup administrators nguyenchidu /add
-          
-          echo User nguyenchidu da tao voi password: !password!
+          # Enable RDP + Firewall
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-      - name: 🌐 Chạy Ngrok + Hiện Info
-        shell: pwsh
-        run: |
-          $env:PASSWORD = "${{ env.PASSWORD }}"
-          Start-Process .\ngrok.exe -ArgumentList "tcp 3389" -WindowStyle Hidden
-          Start-Sleep 5
-          
-          Write-Host ""
-          Write-Host "=================================="
-          Write-Host "  🎯 KẾT NỐI RDP"
-          Write-Host "=================================="
-          Write-Host "👤 User: nguyenchidu"
-          Write-Host "🔑 Pass: $env:PASSWORD"
-          $url = (Invoke-RestMethod http://localhost:4040/api/tunnels -TimeoutSec 5).tunnels.public_url
-          Write-Host "🔗 URL:  $url"
-          Write-Host "=================================="
-          Write-Host "⚠️ LUU PASSWORD LAI NGAY!"
+          # Tạo user với pass random
+          $randomPassword = -join ((33..47) + (48..57) + (65..90) + (97..122) | Get-Random -Count 16 | ForEach-Object {[char]$_})
+          New-LocalUser "nguyenchidu" -Password (ConvertTo-SecureString -AsPlainText $randomPassword -Force) -FullName "nguyenchidu PRO" -Description "SERVER PREMIUM HRGBVN PRO" -ErrorAction SilentlyContinue
 
-      - name: ⏱️ Giữ server chạy
-        shell: pwsh
-        run: |
-          $h = [int]"${{ github.event.inputs.duration }}"
-          Write-Host "⏰ Dang chay $h gio..."
-          for ($i = $h*60; $i -gt 0; $i--) {
-              if ($i % 30 -eq 0) { [GC]::Collect() | Out-Null }
-              Start-Sleep 60
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "nguyenchidu" -ErrorAction SilentlyContinue
+          Add-LocalGroupMember -Group "Administrators" -Member "nguyenchidu" -ErrorAction SilentlyContinue
+
+          # Lưu password vào file để hiển thị sau
+          $randomPassword | Out-File -FilePath "C:\password.txt" -Encoding utf8
+
+          # Tắt service nặng (CPU/RAM trống)
+          @("SysMain","WSearch","wuauserv","WinDefend","DiagTrack") | ForEach-Object {
+            Stop-Service -Name $_ -Force -ErrorAction SilentlyContinue
+            Set-Service -Name $_ -StartupType Disabled -ErrorAction SilentlyContinue
           }
+          Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
+
+          # Tối ưu RDP + giảm bandwidth/data (low quality)
+          New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Force | Out-Null
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "MaxCompressionLevel" -Value 2 -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "MinEncryptionLevel" -Value 1 -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "NegotiateSecurityLayer" -Value 0 -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services\Client' -Name "DisableRdpdr" -Value 1 -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "fDisableCdm" -Value 1 -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "ColorDepth" -Value 4 -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "fEnableThinClient" -Value 1 -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "fEnableDesktopComposition" -Value 0 -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "fEnableWddmDriver" -Value 0 -ErrorAction SilentlyContinue
+
+          # HKCU settings: Tạo key nếu chưa tồn tại + SilentlyContinue để tránh fail
+          New-Item -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects' -Force -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects' -Name "VisualFXSetting" -Value 2 -ErrorAction SilentlyContinue
+
+          $explorerAdvanced = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
+          if (!(Test-Path $explorerAdvanced)) { New-Item -Path $explorerAdvanced -Force | Out-Null }
+          Set-ItemProperty -Path $explorerAdvanced -Name "TaskbarAnimations" -Value 0 -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path $explorerAdvanced -Name "ListviewAlphaSelect" -Value 0 -ErrorAction SilentlyContinue
+
+          $dwm = 'HKCU:\Software\Microsoft\Windows\DWM'
+          if (!(Test-Path $dwm)) { New-Item -Path $dwm -Force | Out-Null }
+          Set-ItemProperty -Path $dwm -Name "EnableAeroPeek" -Value 0 -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path $dwm -Name "Animations" -Value 0 -ErrorAction SilentlyContinue
+
+          $windowMetrics = 'HKCU:\Control Panel\Desktop\WindowMetrics'
+          if (!(Test-Path $windowMetrics)) { New-Item -Path $windowMetrics -Force | Out-Null }
+          Set-ItemProperty -Path $windowMetrics -Name "MinAnimate" -Value "0" -ErrorAction SilentlyContinue
+
+          Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name "EnableTransparency" -Value 0 -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name "DragFullWindows" -Value "0" -ErrorAction SilentlyContinue
+
+          # In intro PREMIUM
+          Write-Host ""
+          Write-Host "╔════════════════════════════════════════════════════╗" -ForegroundColor Cyan
+          Write-Host "║      SERVER PREMIUM HRGBVN PRO 🚀 - WINDOWS 11     ║" -ForegroundColor Magenta
+          Write-Host "║                                                    ║" -ForegroundColor Green
+          Write-Host "║  Username → nguyenchidu                            ║" -ForegroundColor Yellow
+          Write-Host "║  Password → [RANDOM - XEM BÊN DƯỚI]                ║" -ForegroundColor Yellow
+          Write-Host "║                                                    ║" -ForegroundColor Green
+          Write-Host "╚════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+          Write-Host ""
+
+      - name: Start Ngrok Tunnel - PREMIUM PRO Flash Mode (Low Data)
+        run: |
+          Write-Host ""
+          Write-Host "╔════════════════════════════════════════════════════╗" -ForegroundColor Cyan
+          Write-Host "║      SERVER PREMIUM HRGBVN PRO 🚀 - WINDOWS 11     ║" -ForegroundColor Magenta
+          Write-Host "║  ⚠️ CẢNH BÁO PREMIUM: Tránh vượt 1GB ngrok free!   ║" -ForegroundColor Red
+          Write-Host "║  - Chọn 'Modem (56 Kbps)' hoặc Low-speed trong RDP client" -ForegroundColor Yellow
+          Write-Host "║  - Không copy file lớn, xem video dài, mở nhiều tab" -ForegroundColor Yellow
+          Write-Host "║  - Ngrok free: max ~1GB/tháng → ~2-6h RDP low quality" -ForegroundColor Red
+          Write-Host "║  - Ping thấp region Asia (ap) cho VN tốt           ║" -ForegroundColor Green
+          Write-Host "╚════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+          Write-Host ""
+
+          Start-Process -WindowStyle Hidden -FilePath ".\ngrok.exe" -ArgumentList "tcp 3389 --log=stdout --log-level=info --region=ap"
+
+          Start-Sleep -Seconds 25
+
+          try {
+            $tunnels = Invoke-RestMethod http://localhost:4040/api/tunnels
+            $tcpTunnel = ($tunnels.tunnels | Where-Object { $_.proto -eq "tcp" }).public_url
+            if ($tcpTunnel) {
+              $hostPort = $tcpTunnel -replace "tcp://", ""
+              $password = Get-Content "C:\password.txt"
+              
+              Write-Host "🌟 NGROK PREMIUM ADDRESS (paste vào Remote Desktop Connection):" -ForegroundColor Green
+              Write-Host "          $hostPort" -ForegroundColor Magenta
+              Write-Host ""
+              Write-Host "  Username → nguyenchidu" -ForegroundColor Yellow
+              Write-Host "  Password → $password" -ForegroundColor Yellow
+              Write-Host ""
+              Write-Host "⚡ Kết nối ngay! Dùng low quality để session lâu ⚡" -ForegroundColor Yellow
+            } else {
+              Write-Host "❌ Không thấy tunnel! Check authtoken hoặc ngrok limit." -ForegroundColor Red
+            }
+          } catch {
+            Write-Host "Lỗi lấy tunnel: $_" -ForegroundColor Red
+          }
+
+          Write-Host ""
+          Write-Host "Session max ~6h (GitHub limit). Re-run để renew." -ForegroundColor DarkCyan
+          Write-Host "Check usage: https://dashboard.ngrok.com/usage" -ForegroundColor DarkCyan
+
+          Start-Sleep -Seconds 21420
