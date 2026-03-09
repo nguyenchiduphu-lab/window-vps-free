@@ -26,57 +26,75 @@ jobs:
     
     steps:
       - name: 🚀 Khởi động
+        shell: cmd
         run: |
-          echo "server HRGBVN PRO 🚀"
-          echo "${{ env.SUBTITLE }}"
-          echo "Thoi gian: ${{ github.event.inputs.duration }}h"
+          echo server HRGBVN PRO 🚀
+          echo MADE BY : Nguyễn Chí Dự
+          echo Thoi gian: ${{ github.event.inputs.duration }}h
 
       - name: ⚡ Tắt dịch vụ nặng
+        shell: cmd
         run: |
-          cmd /c "sc stop wuauserv & sc config wuauserv start= disabled & sc stop WSearch & sc config WSearch start= disabled & sc stop SysMain & sc config SysMain start= disabled" >nul 2>&1
-          Write-Host "✅ Tối ưu xong!"
+          sc stop wuauserv >nul 2>&1
+          sc config wuauserv start= disabled >nul 2>&1
+          sc stop WSearch >nul 2>&1
+          sc config WSearch start= disabled >nul 2>&1
+          sc stop SysMain >nul 2>&1
+          sc config SysMain start= disabled >nul 2>&1
+          echo Tối ưu xong!
 
       - name: 📥 Cài Ngrok
+        shell: pwsh
         env:
           NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
         run: |
-          Invoke-WebRequest "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile "ngrok.zip" -UseBasicParsing
+          Invoke-WebRequest "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile "ngrok.zip"
           Expand-Archive "ngrok.zip" -DestinationPath "." -Force
-          .\ngrok.exe config add-authtoken $env:NGROK_AUTH_TOKEN 2>$null
+          .\ngrok.exe config add-authtoken $env:NGROK_AUTH_TOKEN
 
       - name: 🔐 Bật RDP + Tạo User nguyenchidu
+        shell: cmd
         run: |
-          # Bật RDP bằng PowerShell (ổn định hơn)
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop" -ErrorAction SilentlyContinue
+          REM Bật RDP
+          reg add "HKLM\System\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f
+          netsh advfirewall firewall set rule group="remote desktop" new enable=yes
           
-          # Tạo password random 12 ký tự
-          $passRandom = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 12 | ForEach-Object {[char]$_})
-          "PASSWORD=$passRandom" | Out-File -FilePath $env:GITHUB_ENV -Append
+          REM Tạo password random 12 ký tự
+          setlocal EnableDelayedExpansion
+          set "chars=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+          set "password="
+          for /L %%i in (1,1,12) do (
+            set /a "rand=!random! %% 62"
+            for %%j in (!rand!) do set "password=!password!!chars:~%%j,1!"
+          )
+          echo PASSWORD=!password!>> %GITHUB_ENV%
           
-          # Tạo user nguyenchidu
-          $passSecure = ConvertTo-SecureString $passRandom -AsPlainText -Force
-          New-LocalUser -Name "nguyenchidu" -Password $passSecure -FullName "Nguyen Chi Du" -Description "HRGBVN User" -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group "Administrators" -Member "nguyenchidu" -ErrorAction SilentlyContinue
+          REM Tạo user nguyenchidu
+          net user nguyenchidu !password! /add
+          net localgroup administrators nguyenchidu /add
           
-          Write-Host "✅ User nguyenchidu da tao!"
+          echo User nguyenchidu da tao voi password: !password!
 
       - name: 🌐 Chạy Ngrok + Hiện Info
+        shell: pwsh
         run: |
+          $env:PASSWORD = "${{ env.PASSWORD }}"
           Start-Process .\ngrok.exe -ArgumentList "tcp 3389" -WindowStyle Hidden
-          Start-Sleep 4
+          Start-Sleep 5
           
-          Write-Host "`n=================================="
+          Write-Host ""
+          Write-Host "=================================="
           Write-Host "  🎯 KẾT NỐI RDP"
           Write-Host "=================================="
           Write-Host "👤 User: nguyenchidu"
-          Write-Host "🔑 Pass: ${{ env.PASSWORD }}"
+          Write-Host "🔑 Pass: $env:PASSWORD"
           $url = (Invoke-RestMethod http://localhost:4040/api/tunnels -TimeoutSec 5).tunnels.public_url
           Write-Host "🔗 URL:  $url"
           Write-Host "=================================="
           Write-Host "⚠️ LUU PASSWORD LAI NGAY!"
 
       - name: ⏱️ Giữ server chạy
+        shell: pwsh
         run: |
           $h = [int]"${{ github.event.inputs.duration }}"
           Write-Host "⏰ Dang chay $h gio..."
