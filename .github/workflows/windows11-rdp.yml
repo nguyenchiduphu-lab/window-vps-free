@@ -26,157 +26,118 @@ jobs:
     
     steps:
       - name: Check Token
-        shell: pwsh
+        shell: cmd
         run: |
-          if ([string]::IsNullOrWhiteSpace("${{ secrets.NGROK_AUTH_TOKEN }}")) {
-            Write-Host "CANH BAO: Chua co NGROK_AUTH_TOKEN"
-          }
+          if "${{ secrets.NGROK_AUTH_TOKEN }}"=="" (
+            echo LOI: Chua co NGROK_AUTH_TOKEN trong Secrets
+            exit 1
+          )
+          echo Token OK
 
       - name: Start
-        shell: pwsh
+        shell: cmd
         run: |
-          Write-Host "🚀 SERVER HRGBVN PRO"
-          Write-Host "${{ env.SUBTITLE }}"
-          Write-Host "OS: Windows 11"
-          Write-Host "Time: ${{ github.event.inputs.duration }}h"
+          echo 🚀 SERVER HRGBVN PRO
+          echo ${{ env.SUBTITLE }}
+          echo OS: Windows 11
+          echo Time: ${{ github.event.inputs.duration }}h
 
       - name: Clean
-        shell: pwsh
+        shell: cmd
         run: |
-          Get-Service WSearch,SysMain,DiagTrack -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue
-          Set-Service WSearch -StartupType Disabled -ErrorAction SilentlyContinue
-          Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
+          sc stop WSearch 2>nul
+          sc config WSearch start= disabled 2>nul
+          del /q /f /s %TEMP%\* 2>nul
 
       - name: Install Ngrok
-        shell: pwsh
+        shell: cmd
         run: |
-          try {
-            Invoke-WebRequest "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile "ngrok.zip"
-            Expand-Archive "ngrok.zip" "C:\ngrok" -Force
-          } catch {
-            Write-Host "CANH BAO: Tai ngrok that bai"
-          }
+          curl -o ngrok.zip https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip
+          tar -xf ngrok.zip -C C:\
+          C:\ngrok.exe version
 
-      - name: Setup Ngrok
-        shell: pwsh
+      - name: Config Ngrok
+        shell: cmd
         run: |
-          try {
-            & "C:\ngrok\ngrok.exe" config add-authtoken "${{ secrets.NGROK_AUTH_TOKEN }}"
-          } catch {
-            Write-Host "CANH BAO: Config ngrok that bai"
-          }
+          C:\ngrok.exe config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+          if errorlevel 1 (
+            echo LOI: Token sai hoac loi config
+            exit 1
+          )
+          echo Config OK
 
       - name: Create User
-        shell: pwsh
+        shell: cmd
         run: |
-          $user = "nguyenchidu"
-          $pass = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 12 | ForEach-Object {[char]$_}) + "@1"
-          
-          try { Remove-LocalUser -Name $user -ErrorAction SilentlyContinue } catch {}
-          
-          $securePass = ConvertTo-SecureString $pass -AsPlainText -Force
-          New-LocalUser -Name $user -Password $securePass -PasswordNeverExpires -AccountNeverExpires -ErrorAction Stop
-          Add-LocalGroupMember -Group "Administrators" -Member $user
-          
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          
-          "$user`n$pass" | Out-File "C:\rdpinfo.txt"
-          Write-Host "User: $user"
-          Write-Host "Pass: $pass"
+          net user nguyenchidu /delete 2>nul
+          net user nguyenchidu HRGBVN2024@ /add /passwordreq:yes
+          net localgroup administrators nguyenchidu /add
+          reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f
+          reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v UserAuthentication /t REG_DWORD /d 0 /f
+          netsh advfirewall firewall set rule group="remote desktop" new enable=Yes
+          echo User: nguyenchidu
+          echo Pass: HRGBVN2024@
 
-      - name: Get IP Address
-        shell: pwsh
+      - name: Start Ngrok
+        shell: cmd
         run: |
-          try {
-            $ip = Invoke-RestMethod -Uri "https://api.ipify.org" -ErrorAction Stop
-            $ip | Out-File "C:\ip.txt"
-            Write-Host "IP Public: $ip"
-          } catch {
-            Write-Host "Khong lay duoc IP"
-          }
+          start /B C:\ngrok.exe tcp 3389
+          echo Dang cho ngrok khoi dong...
+          timeout /t 15 /nobreak >nul
 
-      - name: Start Tunnel
-        shell: pwsh
+      - name: Get Info
+        shell: powershell
         run: |
-          $ngrokOk = $false
+          $max = 20
+          $url = $null
           
-          try {
-            Start-Process -FilePath "C:\ngrok\ngrok.exe" -ArgumentList "tcp 3389" -WindowStyle Hidden
-            Start-Sleep -Seconds 10
-            
-            for ($i = 1; $i -le 15; $i++) {
-              Start-Sleep -Seconds 3
-              try {
-                $tunnels = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels" -ErrorAction Stop
-                $ngrokOk = $true
-                break
-              } catch {}
+          for ($i=1; $i -le $max; $i++) {
+            try {
+              $res = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels" -TimeoutSec 5
+              $url = $res.tunnels[0].public_url
+              Write-Host "Ngrok OK sau $i lan thu"
+              break
+            } catch {
+              Write-Host "Thu lan $i..."
+              Start-Sleep -Seconds 2
             }
-          } catch {
-            Write-Host "CANH BAO: Khong start duoc ngrok"
           }
           
-          $info = Get-Content "C:\rdpinfo.txt"
-          $user = $info[0]
-          $pass = $info[1]
-          
-          if ($ngrokOk) {
-            $url = $tunnels.tunnels[0].public_url -replace "tcp://",""
-            $parts = $url -split ":"
-            
-            Write-Host ""
-            Write-Host "============================"
-            Write-Host "🚀 SERVER HRGBVN PRO - OK"
-            Write-Host "${{ env.SUBTITLE }}"
-            Write-Host "============================"
-            Write-Host "Host: $($parts[0])"
-            Write-Host "Port: $($parts[1])"
-            Write-Host "User: $user"
-            Write-Host "Pass: $pass"
-            Write-Host "Time: ${{ github.event.inputs.duration }}h"
-            Write-Host "============================"
-          } else {
-            $ip = Get-Content "C:\ip.txt" -ErrorAction SilentlyContinue
-            if ([string]::IsNullOrWhiteSpace($ip)) { $ip = "Khong xac dinh" }
+          if ($url) {
+            $clean = $url -replace "tcp://",""
+            $parts = $clean -split ":"
             
             Write-Host ""
             Write-Host "============================"
             Write-Host "🚀 SERVER HRGBVN PRO"
             Write-Host "${{ env.SUBTITLE }}"
             Write-Host "============================"
-            Write-Host "CANH BAO: Ngrok khong hoat dong"
-            Write-Host ""
-            Write-Host "KET NOI TRUC TIEP:"
-            Write-Host "IP: $ip"
-            Write-Host "Port: 3389"
-            Write-Host "User: $user"
-            Write-Host "Pass: $pass"
-            Write-Host ""
+            Write-Host "Host: $($parts[0])"
+            Write-Host "Port: $($parts[1])"
+            Write-Host "User: nguyenchidu"
+            Write-Host "Pass: HRGBVN2024@"
             Write-Host "Time: ${{ github.event.inputs.duration }}h"
             Write-Host "============================"
+          } else {
+            Write-Host "LOI: Khong lay duoc thong tin ngrok"
+            exit 1
           }
-          
-          # LUON CHAY DU THOI GIAN
+
+      - name: Keep Alive
+        shell: powershell
+        run: |
           $h = [int]"${{ github.event.inputs.duration }}"
           $end = (Get-Date).AddHours($h)
-          Write-Host "Bat dau giu may chay trong $h gio..."
           
           while ((Get-Date) -lt $end) {
             Start-Sleep -Seconds 60
-            Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue 2>$null
             $remain = $end - (Get-Date)
-            Write-Host "Con lai: $($remain.ToString('hh\:mm\:ss'))"
+            Write-Host "Con: $($remain.ToString('hh\:mm\:ss'))"
           }
-          
-          Write-Host "Het thoi gian!"
 
       - name: Cleanup
         if: always()
-        shell: pwsh
+        shell: cmd
         run: |
-          Stop-Process -Name "ngrok" -Force -ErrorAction SilentlyContinue
-          try { Remove-LocalUser -Name "nguyenchidu" -ErrorAction SilentlyContinue } catch {}
-          Remove-Item "C:\rdpinfo.txt" -ErrorAction SilentlyContinue
-          Remove-Item "C:\ip.txt" -ErrorAction SilentlyContinue
+          taskkill /F /IM ngrok.exe 2>nul
+          net user nguyenchidu /delete 2>nul
