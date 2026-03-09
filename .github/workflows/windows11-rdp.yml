@@ -66,20 +66,41 @@ jobs:
       - name: Start Ngrok
         shell: cmd
         run: |
-          start /B C:\ngrok.exe tcp 3389 --log=stdout > C:\ngrok.log 2>&1
-          ping -n 25 127.0.0.1 >nul
+          start /B C:\ngrok.exe tcp 3389
+          echo Dang cho ngrok...
+          ping -n 30 127.0.0.1 >nul
 
       - name: Get URL
         shell: powershell
         run: |
-          $json = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels"
-          $url = $json.tunnels[0].public_url
+          $url = ""
+          $try = 0
+          
+          while ($url -eq "" -and $try -lt 20) {
+            try {
+              Start-Sleep -Seconds 3
+              $json = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels" -TimeoutSec 5
+              $url = $json.tunnels[0].public_url
+            } catch {
+              $try++
+              Write-Host "Thu lan $try..."
+            }
+          }
+          
+          if ($url -eq "") {
+            Write-Host "LOI: Khong lay duoc URL sau 20 lan thu"
+            exit 1
+          }
+          
           $clean = $url -replace "tcp://",""
           $parts = $clean -split ":"
+          
+          Write-Host ""
           Write-Host "============================"
           Write-Host "🚀 SERVER HRGBVN PRO"
           Write-Host "${{ env.SUBTITLE }}"
           Write-Host "============================"
+          Write-Host "✅ KET NOI RDP:"
           Write-Host "Host: $($parts[0])"
           Write-Host "Port: $($parts[1])"
           Write-Host "User: nguyenchidu"
@@ -102,5 +123,4 @@ jobs:
         run: |
           taskkill /F /IM ngrok.exe 2>nul
           net user nguyenchidu /delete 2>nul
-          if exist C:\ngrok.log del C:\ngrok.log
           if exist C:\ngrok.zip del C:\ngrok.zip
