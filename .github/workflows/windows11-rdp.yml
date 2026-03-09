@@ -86,6 +86,17 @@ jobs:
           Write-Host "User: $user"
           Write-Host "Pass: $pass"
 
+      - name: Get IP Address
+        shell: pwsh
+        run: |
+          try {
+            $ip = Invoke-RestMethod -Uri "https://api.ipify.org" -ErrorAction Stop
+            $ip | Out-File "C:\ip.txt"
+            Write-Host "IP Public: $ip"
+          } catch {
+            Write-Host "Khong lay duoc IP"
+          }
+
       - name: Start Tunnel
         shell: pwsh
         run: |
@@ -127,15 +138,22 @@ jobs:
             Write-Host "Time: ${{ github.event.inputs.duration }}h"
             Write-Host "============================"
           } else {
+            $ip = Get-Content "C:\ip.txt" -ErrorAction SilentlyContinue
+            if ([string]::IsNullOrWhiteSpace($ip)) { $ip = "Khong xac dinh" }
+            
             Write-Host ""
             Write-Host "============================"
             Write-Host "🚀 SERVER HRGBVN PRO"
             Write-Host "${{ env.SUBTITLE }}"
             Write-Host "============================"
             Write-Host "CANH BAO: Ngrok khong hoat dong"
-            Write-Host "RDP van chay tren may local"
+            Write-Host ""
+            Write-Host "KET NOI TRUC TIEP:"
+            Write-Host "IP: $ip"
+            Write-Host "Port: 3389"
             Write-Host "User: $user"
             Write-Host "Pass: $pass"
+            Write-Host ""
             Write-Host "Time: ${{ github.event.inputs.duration }}h"
             Write-Host "============================"
           }
@@ -161,3 +179,4 @@ jobs:
           Stop-Process -Name "ngrok" -Force -ErrorAction SilentlyContinue
           try { Remove-LocalUser -Name "nguyenchidu" -ErrorAction SilentlyContinue } catch {}
           Remove-Item "C:\rdpinfo.txt" -ErrorAction SilentlyContinue
+          Remove-Item "C:\ip.txt" -ErrorAction SilentlyContinue
