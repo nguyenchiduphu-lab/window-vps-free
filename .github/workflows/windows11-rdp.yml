@@ -27,71 +27,75 @@ jobs:
     
     steps:
       - name: Info
-        shell: cmd
+        shell: pwsh
         run: |
-          echo 🚀 SERVER HRGBVN PRO
-          echo ${{ env.SUBTITLE }}
-          echo OS: Windows 11
-          echo Time: ${{ github.event.inputs.duration }}h
+          Write-Host "🚀 SERVER HRGBVN PRO"
+          Write-Host "${{ env.SUBTITLE }}"
+          Write-Host "OS: Windows 11"
+          Write-Host "Time: ${{ github.event.inputs.duration }}h"
 
       - name: Setup
-        shell: cmd
+        shell: pwsh
         run: |
-          sc stop WSearch 2>nul
-          sc config WSearch start= disabled 2>nul
+          Get-Service WSearch -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue
+          Set-Service WSearch -StartupType Disabled -ErrorAction SilentlyContinue
 
       - name: Download Ngrok
-        shell: cmd
+        shell: pwsh
         run: |
-          curl -L -o ngrok.zip https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip
-          7z x ngrok.zip -oC:\ -y
-          C:\ngrok.exe --version
-
-      - name: Config Token
-        shell: cmd
-        run: |
-          C:\ngrok.exe config add-authtoken ${{ env.NGROK_TOKEN }}
+          Invoke-WebRequest -Uri "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile "C:\ngrok.zip"
+          Expand-Archive -Path "C:\ngrok.zip" -DestinationPath "C:\ngrok" -Force
+          & "C:\ngrok\ngrok.exe" --version
 
       - name: Create User
-        shell: cmd
+        shell: pwsh
         run: |
-          net user nguyenchidu /delete 2>nul
-          net user nguyenchidu HRGBVN2024@ /add
-          net localgroup administrators nguyenchidu /add
-          reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f >nul
-          netsh advfirewall firewall set rule group="remote desktop" new enable=Yes >nul
-          echo User: nguyenchidu
-          echo Pass: HRGBVN2024@
+          $user = "nguyenchidu"
+          $pass = "HRGBVN2024@"
+          try { Remove-LocalUser -Name $user -ErrorAction SilentlyContinue } catch {}
+          $securePass = ConvertTo-SecureString $pass -AsPlainText -Force
+          New-LocalUser -Name $user -Password $securePass -PasswordNeverExpires -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member $user
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Write-Host "User: $user"
+          Write-Host "Pass: $pass"
 
-      - name: Start Ngrok
-        shell: cmd
+      - name: Start Ngrok and Get URL
+        shell: pwsh
         run: |
-          start /B C:\ngrok.exe tcp 3389
-          echo Dang cho ngrok...
-          ping -n 30 127.0.0.1 >nul
-
-      - name: Get URL
-        shell: powershell
-        run: |
-          $url = ""
-          $try = 0
+          # Chay ngrok voi token truc tiep
+          $ngrokPath = "C:\ngrok\ngrok.exe"
+          $token = "${{ env.NGROK_TOKEN }}"
           
-          while ($url -eq "" -and $try -lt 20) {
+          # Tao process ngrok
+          $proc = Start-Process -FilePath $ngrokPath -ArgumentList "tcp","3389","--authtoken",$token -PassThru -WindowStyle Hidden
+          
+          Write-Host "Ngrok dang khoi dong... (PID: $($proc.Id))"
+          Start-Sleep -Seconds 10
+          
+          # Thu lay URL nhieu lan
+          $url = $null
+          for ($i = 1; $i -le 30; $i++) {
             try {
-              Start-Sleep -Seconds 3
-              $json = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels" -TimeoutSec 5
-              $url = $json.tunnels[0].public_url
+              $res = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels" -TimeoutSec 5 -ErrorAction Stop
+              $url = $res.tunnels[0].public_url
+              Write-Host "✅ Thanh cong sau $i lan thu!"
+              break
             } catch {
-              $try++
-              Write-Host "Thu lan $try..."
+              Write-Host "Thu lan $i..."
+              Start-Sleep -Seconds 2
             }
           }
           
-          if ($url -eq "") {
-            Write-Host "LOI: Khong lay duoc URL sau 20 lan thu"
+          if (-not $url) {
+            Write-Host "❌ Khong lay duoc URL"
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
             exit 1
           }
           
+          # Hien thi thong tin
           $clean = $url -replace "tcp://",""
           $parts = $clean -split ":"
           
@@ -107,20 +111,30 @@ jobs:
           Write-Host "Pass: HRGBVN2024@"
           Write-Host "Time: ${{ github.event.inputs.duration }}h"
           Write-Host "============================"
-
-      - name: Keep Alive
-        shell: powershell
-        run: |
+          
+          # Giu ngrok chay
           $h = [int]"${{ github.event.inputs.duration }}"
-          for ($i = $h * 60; $i -gt 0; $i--) {
+          $end = (Get-Date).AddHours($h)
+          
+          while ((Get-Date) -lt $end) {
             Start-Sleep -Seconds 60
-            Write-Host "Con $i phut"
+            # Kiem tra ngrok con chay khong
+            if ($proc.HasExited) {
+              Write-Host "❌ Ngrok da tat, khoi dong lai..."
+              $proc = Start-Process -FilePath $ngrokPath -ArgumentList "tcp","3389","--authtoken",$token -PassThru -WindowStyle Hidden
+            }
+            $remain = $end - (Get-Date)
+            Write-Host "⏱️ Con: $($remain.ToString('hh\:mm\:ss'))"
           }
+          
+          # Tat ngrok
+          Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
 
       - name: Cleanup
         if: always()
-        shell: cmd
+        shell: pwsh
         run: |
-          taskkill /F /IM ngrok.exe 2>nul
-          net user nguyenchidu /delete 2>nul
-          if exist C:\ngrok.zip del C:\ngrok.zip
+          Get-Process ngrok -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          try { Remove-LocalUser -Name "nguyenchidu" -ErrorAction SilentlyContinue } catch {}
+          Remove-Item "C:\ngrok.zip" -ErrorAction SilentlyContinue
+          Remove-Item "C:\ngrok" -Recurse -Force -ErrorAction SilentlyContinue
