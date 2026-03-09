@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       duration:
-        description: 'Time (1-6h)'
+        description: 'Thời gian chạy (giờ) - Tối đa 6h'
         required: true
         default: '1'
         type: choice
@@ -18,7 +18,6 @@ on:
 
 env:
   SUBTITLE: "MADE BY : Nguyễn Chí Dự"
-  NGROK_TOKEN: "3AhYtwzZwyMGsFQwLkXpeWjQ0VK_7UW19kGqsP6jDMb6DR5wd"
 
 jobs:
   build:
@@ -26,115 +25,133 @@ jobs:
     timeout-minutes: 360
     
     steps:
-      - name: Info
-        shell: pwsh
+      - name: 🚀 Khởi động Server HRGBVN PRO
         run: |
-          Write-Host "🚀 SERVER HRGBVN PRO"
-          Write-Host "${{ env.SUBTITLE }}"
-          Write-Host "OS: Windows 11"
-          Write-Host "Time: ${{ github.event.inputs.duration }}h"
+          echo "=================================="
+          echo "  server HRGBVN PRO 🚀"
+          echo "  ${{ env.SUBTITLE }}"
+          echo "=================================="
+          echo "⏰ Thời gian chạy: ${{ github.event.inputs.duration }} giờ"
+          echo "💻 Hệ điều hành: Windows 11"
+          echo "=================================="
 
-      - name: Setup
-        shell: pwsh
+      - name: 📥 Cài đặt Chocolatey & Phần mềm cần thiết
         run: |
-          Get-Service WSearch -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue
+          Set-ExecutionPolicy Bypass -Scope Process -Force
+          [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+          Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+          choco feature enable -n allowGlobalConfirmation
+
+      - name: 🖥️ Cài đặt Chrome (nhẹ, hỗ trợ YouTube)
+        run: |
+          choco install googlechrome --ignore-checksums -y
+
+      - name: 🔧 Cài đặt Ngrok
+        run: |
+          choco install ngrok -y
+
+      - name: ⚡ Tối ưu hệ thống - Tắt dịch vụ không cần thiết
+        run: |
+          # Tắt Windows Update để tránh lag
+          Stop-Service wuauserv -Force -ErrorAction SilentlyContinue
+          Set-Service wuauserv -StartupType Disabled -ErrorAction SilentlyContinue
+          
+          # Tắt dịch vụ tìm kiếm để tiết kiệm RAM
+          Stop-Service WSearch -Force -ErrorAction SilentlyContinue
           Set-Service WSearch -StartupType Disabled -ErrorAction SilentlyContinue
+          
+          # Tắt dịch vụ Superfetch/SysMain
+          Stop-Service SysMain -Force -ErrorAction SilentlyContinue
+          Set-Service SysMain -StartupType Disabled -ErrorAction SilentlyContinue
+          
+          # Tắt dịch vụ Diagnostic
+          Stop-Service DiagTrack -Force -ErrorAction SilentlyContinue
+          Set-Service DiagTrack -StartupType Disabled -ErrorAction SilentlyContinue
+          
+          Write-Host "✅ Đã tối ưu dịch vụ hệ thống"
 
-      - name: Download Ngrok
-        shell: pwsh
+      - name: 🧹 Dọn dẹp hệ thống - Giải phóng RAM & Disk
         run: |
-          Invoke-WebRequest -Uri "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile "C:\ngrok.zip"
-          Expand-Archive -Path "C:\ngrok.zip" -DestinationPath "C:\ngrok" -Force
-          & "C:\ngrok\ngrok.exe" --version
+          # Xóa file tạm
+          Remove-Item -Path "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
+          
+          # Xóa Prefetch
+          Remove-Item -Path "C:\Windows\Prefetch\*" -Force -ErrorAction SilentlyContinue
+          
+          # Chạy Disk Cleanup tự động
+          Start-Process -FilePath "cleanmgr.exe" -ArgumentList "/sagerun:1" -WindowStyle Hidden -Wait
+          
+          Write-Host "🧹 Đã dọn dẹp hệ thống"
 
-      - name: Create User
-        shell: pwsh
+      - name: 🌐 Cấu hình Ngrok
+        env:
+          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
         run: |
-          $user = "nguyenchidu"
-          $pass = "HRGBVN2024@"
-          try { Remove-LocalUser -Name $user -ErrorAction SilentlyContinue } catch {}
-          $securePass = ConvertTo-SecureString $pass -AsPlainText -Force
-          New-LocalUser -Name $user -Password $securePass -PasswordNeverExpires -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member $user
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0
+          ngrok config add-authtoken $env:NGROK_AUTH_TOKEN
+
+      - name: 🖥️ Bật Remote Desktop
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          Write-Host "User: $user"
-          Write-Host "Pass: $pass"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
 
-      - name: Start Ngrok and Get URL
-        shell: pwsh
+      - name: 🔐 Tạo tài khoản người dùng
         run: |
-          # Chay ngrok voi token truc tiep
-          $ngrokPath = "C:\ngrok\ngrok.exe"
-          $token = "${{ env.NGROK_TOKEN }}"
-          
-          # Tao process ngrok
-          $proc = Start-Process -FilePath $ngrokPath -ArgumentList "tcp","3389","--authtoken",$token -PassThru -WindowStyle Hidden
-          
-          Write-Host "Ngrok dang khoi dong... (PID: $($proc.Id))"
-          Start-Sleep -Seconds 10
-          
-          # Thu lay URL nhieu lan
-          $url = $null
-          for ($i = 1; $i -le 30; $i++) {
-            try {
-              $res = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels" -TimeoutSec 5 -ErrorAction Stop
-              $url = $res.tunnels[0].public_url
-              Write-Host "✅ Thanh cong sau $i lan thu!"
-              break
-            } catch {
-              Write-Host "Thu lan $i..."
-              Start-Sleep -Seconds 2
-            }
-          }
-          
-          if (-not $url) {
-            Write-Host "❌ Khong lay duoc URL"
-            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-            exit 1
-          }
-          
-          # Hien thi thong tin
-          $clean = $url -replace "tcp://",""
-          $parts = $clean -split ":"
-          
+          $password = ConvertTo-SecureString "Hrgbvn@123" -AsPlainText -Force
+          New-LocalUser -Name "hrgbvn" -Password $password -FullName "HRGBVN User" -Description "HRGBVN PRO Server"
+          Add-LocalGroupMember -Group "Administrators" -Member "hrgbvn"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "hrgbvn"
+
+      - name: 🚀 Khởi động Ngrok Tunnel (RDP)
+        run: |
+          Start-Process -FilePath "ngrok.exe" -ArgumentList "tcp 3389" -WindowStyle Hidden
+          Start-Sleep -Seconds 5
+
+      - name: 📋 Lấy thông tin kết nối
+        run: |
+          Write-Host "=================================="
+          Write-Host "  🎯 THÔNG TIN KẾT NỐI RDP"
+          Write-Host "=================================="
+          Write-Host "👤 Username: hrgbvn"
+          Write-Host "🔑 Password: Hrgbvn@123"
           Write-Host ""
-          Write-Host "============================"
-          Write-Host "🚀 SERVER HRGBVN PRO"
-          Write-Host "${{ env.SUBTITLE }}"
-          Write-Host "============================"
-          Write-Host "✅ KET NOI RDP:"
-          Write-Host "Host: $($parts[0])"
-          Write-Host "Port: $($parts[1])"
-          Write-Host "User: nguyenchidu"
-          Write-Host "Pass: HRGBVN2024@"
-          Write-Host "Time: ${{ github.event.inputs.duration }}h"
-          Write-Host "============================"
-          
-          # Giu ngrok chay
-          $h = [int]"${{ github.event.inputs.duration }}"
-          $end = (Get-Date).AddHours($h)
-          
-          while ((Get-Date) -lt $end) {
-            Start-Sleep -Seconds 60
-            # Kiem tra ngrok con chay khong
-            if ($proc.HasExited) {
-              Write-Host "❌ Ngrok da tat, khoi dong lai..."
-              $proc = Start-Process -FilePath $ngrokPath -ArgumentList "tcp","3389","--authtoken",$token -PassThru -WindowStyle Hidden
-            }
-            $remain = $end - (Get-Date)
-            Write-Host "⏱️ Con: $($remain.ToString('hh\:mm\:ss'))"
-          }
-          
-          # Tat ngrok
-          Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+          Write-Host "🔗 Ngrok URL:"
+          Invoke-RestMethod -Uri http://localhost:4040/api/tunnels | Select-Object -ExpandProperty tunnels | Select-Object public_url
+          Write-Host "=================================="
+          Write-Host "⚠️ Lưu ý: Không chạy file nặng, không có GPU!"
+          Write-Host "✅ Hỗ trợ: YouTube, Chrome, file .exe nhẹ"
+          Write-Host "=================================="
 
-      - name: Cleanup
-        if: always()
-        shell: pwsh
+      - name: ⏱️ Giữ server chạy theo thời gian đã chọn
         run: |
-          Get-Process ngrok -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-          try { Remove-LocalUser -Name "nguyenchidu" -ErrorAction SilentlyContinue } catch {}
-          Remove-Item "C:\ngrok.zip" -ErrorAction SilentlyContinue
-          Remove-Item "C:\ngrok" -Recurse -Force -ErrorAction SilentlyContinue
+          $hours = [int]"${{ github.event.inputs.duration }}"
+          $seconds = $hours * 3600
+          Write-Host "⏰ Server sẽ chạy trong $hours giờ..."
+          Write-Host "🕐 Bắt đầu: $(Get-Date)"
+          Write-Host "🕐 Kết thúc: $((Get-Date).AddHours($hours))"
+          
+          for ($i = $seconds; $i -gt 0; $i -= 60) {
+              $remainingHours = [math]::Floor($i / 3600)
+              $remainingMinutes = [math]::Floor(($i % 3600) / 60)
+              Write-Host "⏳ Còn lại: $remainingHours giờ $remainingMinutes phút - $(Get-Date)"
+              
+              # Dọn dẹp mỗi 10 phút để tránh lag
+              if ($i % 600 -eq 0) {
+                  Write-Host "🧹 Đang dọn dẹp hệ thống tự động..."
+                  Remove-Item -Path "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
+                  [GC]::Collect()
+                  [GC]::WaitForPendingFinalizers()
+              }
+              
+              Start-Sleep -Seconds 60
+          }
+
+      - name: 🛑 Dọn dẹp trước khi kết thúc
+        if: always()
+        run: |
+          Write-Host "🧹 Dọn dẹp cuối cùng..."
+          Stop-Process -Name "ngrok" -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
+          [GC]::Collect()
+          Write-Host "✅ Đã dọn dẹp xong!"
