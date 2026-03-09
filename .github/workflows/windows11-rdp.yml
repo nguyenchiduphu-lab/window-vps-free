@@ -29,9 +29,6 @@ jobs:
         run: |
           if ("${{ secrets.NGROK_AUTH_TOKEN }}" -eq "") {
             Write-Host "LOI: Chua co NGROK_AUTH_TOKEN"
-            Write-Host "-> Vao Settings > Secrets > New repository secret"
-            Write-Host "-> Name: NGROK_AUTH_TOKEN"
-            Write-Host "-> Value: Token ngrok cua ban"
             exit 1
           }
 
@@ -50,46 +47,26 @@ jobs:
 
       - name: Install Ngrok
         run: |
-          try {
-            Invoke-WebRequest "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile "ngrok.zip"
-            Expand-Archive "ngrok.zip" "C:\ngrok" -Force
-          } catch {
-            Write-Host "LOI: Tai ngrok that bai"
-            exit 1
-          }
+          Invoke-WebRequest "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile "ngrok.zip"
+          Expand-Archive "ngrok.zip" "C:\ngrok" -Force
 
       - name: Setup Ngrok
         run: |
           C:\ngrok\ngrok.exe config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "LOI: Token ngrok sai"
-            exit 1
-          }
 
       - name: Setup RDP
         run: |
           # Xoa user cu neu co
-          net user HRGBVN /delete 2>$null
+          net user HRGBVN /delete /y 2>$null
           
-          # Tao user moi voi password manh
-          $pass = "HRGBVN@Pro2024!"
-          net user HRGBVN $pass /add /passwordreq:yes
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "LOI: Khong tao duoc user"
-            Write-Host "-> Thu lai sau vai giay..."
-            Start-Sleep 5
-            net user HRGBVN $pass /add
-            if ($LASTEXITCODE -ne 0) {
-              Write-Host "LOI: Van khong tao duoc user"
-              exit 1
-            }
-          }
-          
+          # Password ngan hon 14 ky tu
+          $pass = "HRGBVN2024!"
+          echo "Y" | net user HRGBVN $pass /add
           net localgroup administrators HRGBVN /add
           Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server' "fDenyTSConnections" 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           
-          # Luu pass vao file tam
+          # Luu pass
           $pass | Out-File "C:\pass.txt"
 
       - name: Start Tunnel
@@ -97,15 +74,10 @@ jobs:
           Start-Process "C:\ngrok\ngrok.exe" "tcp 3389" -WindowStyle Hidden
           Start-Sleep 10
           
-          try {
-            $res = Invoke-RestMethod "http://localhost:4040/api/tunnels"
-            $url = $res.tunnels[0].public_url -replace "tcp://",""
-            $host = ($url -split ":")[0]
-            $port = ($url -split ":")[1]
-          } catch {
-            Write-Host "LOI: Ngrok khong khoi dong duoc"
-            exit 1
-          }
+          $res = Invoke-RestMethod "http://localhost:4040/api/tunnels"
+          $url = $res.tunnels[0].public_url -replace "tcp://",""
+          $host = ($url -split ":")[0]
+          $port = ($url -split ":")[1]
           
           $pass = Get-Content "C:\pass.txt"
           
@@ -132,5 +104,5 @@ jobs:
         if: always()
         run: |
           Stop-Process -Name "ngrok" -Force -ErrorAction SilentlyContinue
-          net user HRGBVN /delete 2>$null
+          net user HRGBVN /delete /y 2>$null
           Remove-Item "C:\pass.txt" -ErrorAction SilentlyContinue
