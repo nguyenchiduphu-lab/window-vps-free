@@ -25,84 +25,109 @@ jobs:
     timeout-minutes: 360
     
     steps:
-      - name: Check Ngrok Token
+      - name: Check Token
+        shell: pwsh
         run: |
-          if ("${{ secrets.NGROK_AUTH_TOKEN }}" -eq "") {
-            Write-Host "LOI: Chua co NGROK_AUTH_TOKEN"
+          $token = "${{ secrets.NGROK_AUTH_TOKEN }}"
+          if ([string]::IsNullOrWhiteSpace($token)) {
+            Write-Error "LOI: Chua co NGROK_AUTH_TOKEN trong Secrets"
             exit 1
           }
 
-      - name: Start Server
+      - name: Start
+        shell: pwsh
         run: |
-          echo "🚀 SERVER HRGBVN PRO"
-          echo "${{ env.SUBTITLE }}"
-          echo "OS: Windows 11"
-          echo "Time: ${{ github.event.inputs.duration }}h"
+          Write-Host "🚀 SERVER HRGBVN PRO"
+          Write-Host "${{ env.SUBTITLE }}"
+          Write-Host "OS: Windows 11"
+          Write-Host "Time: ${{ github.event.inputs.duration }}h"
 
-      - name: Clean System
+      - name: Clean
+        shell: pwsh
         run: |
-          Stop-Service WSearch -Force -ErrorAction SilentlyContinue
-          Set-Service WSearch -StartupType Disabled -ErrorAction SilentlyContinue
+          Get-Service WSearch,SysMain,DiagTrack -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue
+          Get-Service WSearch,SysMain,DiagTrack -ErrorAction SilentlyContinue | Set-Service -StartupType Disabled -ErrorAction SilentlyContinue
           Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
 
       - name: Install Ngrok
+        shell: pwsh
         run: |
           Invoke-WebRequest "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile "ngrok.zip"
           Expand-Archive "ngrok.zip" "C:\ngrok" -Force
 
       - name: Setup Ngrok
+        shell: pwsh
         run: |
-          C:\ngrok\ngrok.exe config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+          & "C:\ngrok\ngrok.exe" config add-authtoken "${{ secrets.NGROK_AUTH_TOKEN }}"
 
-      - name: Setup RDP
+      - name: Create User
+        shell: pwsh
         run: |
-          # Xoa user cu neu co
-          net user HRGBVN /delete /y 2>$null
+          $user = "nguyenchidu"
+          $pass = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 12 | ForEach-Object {[char]$_}) + "@1"
           
-          # Password ngan hon 14 ky tu
-          $pass = "HRGBVN2024!"
-          echo "Y" | net user HRGBVN $pass /add
-          net localgroup administrators HRGBVN /add
-          Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server' "fDenyTSConnections" 0
+          # Xoa user cu
+          try {
+            Remove-LocalUser -Name $user -ErrorAction SilentlyContinue
+          } catch {}
+          
+          # Tao user moi bang PowerShell (khong hoi Y/N)
+          $securePass = ConvertTo-SecureString $pass -AsPlainText -Force
+          New-LocalUser -Name $user -Password $securePass -PasswordNeverExpires -AccountNeverExpires -ErrorAction Stop
+          Add-LocalGroupMember -Group "Administrators" -Member $user
+          
+          # Enable RDP
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           
-          # Luu pass
-          $pass | Out-File "C:\pass.txt"
+          # Luu thong tin
+          "$user`n$pass" | Out-File "C:\rdpinfo.txt"
+          
+          Write-Host "User: $user"
+          Write-Host "Pass: $pass"
 
       - name: Start Tunnel
+        shell: pwsh
         run: |
-          Start-Process "C:\ngrok\ngrok.exe" "tcp 3389" -WindowStyle Hidden
-          Start-Sleep 10
+          Start-Process -FilePath "C:\ngrok\ngrok.exe" -ArgumentList "tcp 3389" -WindowStyle Hidden
+          Start-Sleep -Seconds 15
           
-          $res = Invoke-RestMethod "http://localhost:4040/api/tunnels"
-          $url = $res.tunnels[0].public_url -replace "tcp://",""
-          $host = ($url -split ":")[0]
-          $port = ($url -split ":")[1]
+          $tunnels = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels"
+          $url = $tunnels.tunnels[0].public_url -replace "tcp://",""
+          $parts = $url -split ":"
           
-          $pass = Get-Content "C:\pass.txt"
+          $info = Get-Content "C:\rdpinfo.txt"
+          $user = $info[0]
+          $pass = $info[1]
           
-          echo "=== THONG TIN ==="
-          echo "Host: $host"
-          echo "Port: $port"
-          echo "User: HRGBVN"
-          echo "Pass: $pass"
-          echo "Time: ${{ github.event.inputs.duration }}h"
-          echo "================="
+          Write-Host ""
+          Write-Host "============================"
+          Write-Host "🚀 SERVER HRGBVN PRO"
+          Write-Host "${{ env.SUBTITLE }}"
+          Write-Host "============================"
+          Write-Host "Host: $($parts[0])"
+          Write-Host "Port: $($parts[1])"
+          Write-Host "User: $user"
+          Write-Host "Pass: $pass"
+          Write-Host "Time: ${{ github.event.inputs.duration }}h"
+          Write-Host "============================"
 
-      - name: Running
+      - name: Run
+        shell: pwsh
         run: |
-          $h = [int]${{ github.event.inputs.duration }}
+          $h = [int]"${{ github.event.inputs.duration }}"
           $end = (Get-Date).AddHours($h)
           while ((Get-Date) -lt $end) {
-            Start-Sleep 300
+            Start-Sleep -Seconds 300
             Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue 2>$null
-            $con = $end - (Get-Date)
-            Write-Host "Con: $($con.ToString('hh\:mm\:ss'))"
+            $remain = $end - (Get-Date)
+            Write-Host "Con: $($remain.ToString('hh\:mm\:ss'))"
           }
 
-      - name: Stop
+      - name: Cleanup
         if: always()
+        shell: pwsh
         run: |
           Stop-Process -Name "ngrok" -Force -ErrorAction SilentlyContinue
-          net user HRGBVN /delete /y 2>$null
-          Remove-Item "C:\pass.txt" -ErrorAction SilentlyContinue
+          try { Remove-LocalUser -Name "nguyenchidu" -ErrorAction SilentlyContinue } catch {}
+          Remove-Item "C:\rdpinfo.txt" -ErrorAction SilentlyContinue
