@@ -1,4 +1,4 @@
-name: SERVER PREMIUM HRGBVN PRO 🚀 - Win11
+name: SERVER PREMIUM HRGBVN PRO 🚀 - Win10
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2019
     timeout-minutes: 360
 
     steps:
@@ -83,7 +83,7 @@ jobs:
           # In intro PREMIUM
           Write-Host ""
           Write-Host "╔════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-          Write-Host "║      SERVER PREMIUM HRGBVN PRO 🚀 - WINDOWS 11     ║" -ForegroundColor Magenta
+          Write-Host "║      SERVER PREMIUM HRGBVN PRO 🚀 - WINDOWS 10     ║" -ForegroundColor Magenta
           Write-Host "║                                                    ║" -ForegroundColor Green
           Write-Host "║  Username → nguyenchidu                            ║" -ForegroundColor Yellow
           Write-Host "║  Password → [RANDOM - XEM BÊN DƯỚI]                ║" -ForegroundColor Yellow
@@ -95,7 +95,7 @@ jobs:
         run: |
           Write-Host ""
           Write-Host "╔════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-          Write-Host "║      SERVER PREMIUM HRGBVN PRO 🚀 - WINDOWS 11     ║" -ForegroundColor Magenta
+          Write-Host "║      SERVER PREMIUM HRGBVN PRO 🚀 - WINDOWS 10     ║" -ForegroundColor Magenta
           Write-Host "║  ⚠️ CẢNH BÁO PREMIUM: Tránh vượt 1GB ngrok free!   ║" -ForegroundColor Red
           Write-Host "║  - Chọn 'Modem (56 Kbps)' hoặc Low-speed trong RDP client" -ForegroundColor Yellow
           Write-Host "║  - Không copy file lớn, xem video dài, mở nhiều tab" -ForegroundColor Yellow
