@@ -28,8 +28,7 @@ jobs:
       - name: Check Token
         shell: pwsh
         run: |
-          $token = "${{ secrets.NGROK_AUTH_TOKEN }}"
-          if ([string]::IsNullOrWhiteSpace($token)) {
+          if ([string]::IsNullOrWhiteSpace("${{ secrets.NGROK_AUTH_TOKEN }}")) {
             Write-Error "LOI: Chua co NGROK_AUTH_TOKEN trong Secrets"
             exit 1
           }
@@ -46,7 +45,7 @@ jobs:
         shell: pwsh
         run: |
           Get-Service WSearch,SysMain,DiagTrack -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue
-          Get-Service WSearch,SysMain,DiagTrack -ErrorAction SilentlyContinue | Set-Service -StartupType Disabled -ErrorAction SilentlyContinue
+          Set-Service WSearch -StartupType Disabled -ErrorAction SilentlyContinue
           Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
 
       - name: Install Ngrok
@@ -66,33 +65,45 @@ jobs:
           $user = "nguyenchidu"
           $pass = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 12 | ForEach-Object {[char]$_}) + "@1"
           
-          # Xoa user cu
-          try {
-            Remove-LocalUser -Name $user -ErrorAction SilentlyContinue
-          } catch {}
+          try { Remove-LocalUser -Name $user -ErrorAction SilentlyContinue } catch {}
           
-          # Tao user moi bang PowerShell (khong hoi Y/N)
           $securePass = ConvertTo-SecureString $pass -AsPlainText -Force
           New-LocalUser -Name $user -Password $securePass -PasswordNeverExpires -AccountNeverExpires -ErrorAction Stop
           Add-LocalGroupMember -Group "Administrators" -Member $user
           
-          # Enable RDP
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           
-          # Luu thong tin
           "$user`n$pass" | Out-File "C:\rdpinfo.txt"
-          
           Write-Host "User: $user"
           Write-Host "Pass: $pass"
 
       - name: Start Tunnel
         shell: pwsh
         run: |
+          # Start ngrok
           Start-Process -FilePath "C:\ngrok\ngrok.exe" -ArgumentList "tcp 3389" -WindowStyle Hidden
-          Start-Sleep -Seconds 15
           
-          $tunnels = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels"
+          # Doi ngrok khoi dong (thu nhieu lan)
+          $maxTry = 10
+          $tunnels = $null
+          
+          for ($i = 1; $i -le $maxTry; $i++) {
+            Start-Sleep -Seconds 5
+            try {
+              $tunnels = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels" -ErrorAction Stop
+              Write-Host "Ngrok da san sang sau $i lan thu"
+              break
+            } catch {
+              Write-Host "Thu lan $i..."
+            }
+          }
+          
+          if ($null -eq $tunnels) {
+            Write-Error "LOI: Khong ket noi duoc ngrok sau $maxTry lan thu"
+            exit 1
+          }
+          
           $url = $tunnels.tunnels[0].public_url -replace "tcp://",""
           $parts = $url -split ":"
           
