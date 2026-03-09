@@ -27,6 +27,7 @@ jobs:
     
     steps:
       - name: Info
+        shell: cmd
         run: |
           echo 🚀 SERVER HRGBVN PRO
           echo ${{ env.SUBTITLE }}
@@ -34,22 +35,25 @@ jobs:
           echo Time: ${{ github.event.inputs.duration }}h
 
       - name: Setup
+        shell: cmd
         run: |
           sc stop WSearch 2>nul
           sc config WSearch start= disabled 2>nul
-          del /q /f /s %TEMP%\* 2>nul
 
       - name: Download Ngrok
+        shell: cmd
         run: |
           curl -L -o ngrok.zip https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip
           7z x ngrok.zip -oC:\ -y
           C:\ngrok.exe --version
 
       - name: Config Token
+        shell: cmd
         run: |
           C:\ngrok.exe config add-authtoken ${{ env.NGROK_TOKEN }}
 
       - name: Create User
+        shell: cmd
         run: |
           net user nguyenchidu /delete 2>nul
           net user nguyenchidu HRGBVN2024@ /add
@@ -60,48 +64,43 @@ jobs:
           echo Pass: HRGBVN2024@
 
       - name: Start Ngrok
+        shell: cmd
         run: |
           start /B C:\ngrok.exe tcp 3389 --log=stdout > C:\ngrok.log 2>&1
           ping -n 25 127.0.0.1 >nul
 
       - name: Get URL
+        shell: powershell
         run: |
-          curl -s http://localhost:4040/api/tunnels > C:\tunnel.json
-          type C:\tunnel.json | findstr "public_url" > C:\url.txt
-          set /p url=<C:\url.txt
-          echo %url%
-          for /f "tokens=2 delims=:" %%a in ("%url%") do set "host=%%a"
-          for /f "tokens=3 delims=:" %%a in ("%url%") do set "port=%%a"
-          set "host=%host:"=%"
-          set "host=%host:tcp//=%"
-          set "host=%host: =%"
-          set "port=%port:"=%"
-          set "port=%port: }=%"
-          echo ============================
-          echo 🚀 SERVER HRGBVN PRO
-          echo ${{ env.SUBTITLE }}
-          echo ============================
-          echo Host: %host%
-          echo Port: %port%
-          echo User: nguyenchidu
-          echo Pass: HRGBVN2024@
-          echo Time: ${{ github.event.inputs.duration }}h
-          echo ============================
+          $json = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels"
+          $url = $json.tunnels[0].public_url
+          $clean = $url -replace "tcp://",""
+          $parts = $clean -split ":"
+          Write-Host "============================"
+          Write-Host "🚀 SERVER HRGBVN PRO"
+          Write-Host "${{ env.SUBTITLE }}"
+          Write-Host "============================"
+          Write-Host "Host: $($parts[0])"
+          Write-Host "Port: $($parts[1])"
+          Write-Host "User: nguyenchidu"
+          Write-Host "Pass: HRGBVN2024@"
+          Write-Host "Time: ${{ github.event.inputs.duration }}h"
+          Write-Host "============================"
 
       - name: Keep Alive
+        shell: powershell
         run: |
-          set /a min=%{ github.event.inputs.duration }% * 60
-          :loop
-          ping -n 60 127.0.0.1 >nul
-          set /a min-=1
-          echo Con %min% phut
-          if %min% gtr 0 goto loop
+          $h = [int]"${{ github.event.inputs.duration }}"
+          for ($i = $h * 60; $i -gt 0; $i--) {
+            Start-Sleep -Seconds 60
+            Write-Host "Con $i phut"
+          }
 
       - name: Cleanup
         if: always()
+        shell: cmd
         run: |
           taskkill /F /IM ngrok.exe 2>nul
           net user nguyenchidu /delete 2>nul
-          del C:\ngrok.log 2>nul
-          del C:\tunnel.json 2>nul
-          del C:\url.txt 2>nul
+          if exist C:\ngrok.log del C:\ngrok.log
+          if exist C:\ngrok.zip del C:\ngrok.zip
