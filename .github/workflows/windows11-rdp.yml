@@ -29,8 +29,7 @@ jobs:
         shell: pwsh
         run: |
           if ([string]::IsNullOrWhiteSpace("${{ secrets.NGROK_AUTH_TOKEN }}")) {
-            Write-Error "LOI: Chua co NGROK_AUTH_TOKEN trong Secrets"
-            exit 1
+            Write-Host "CANH BAO: Chua co NGROK_AUTH_TOKEN"
           }
 
       - name: Start
@@ -51,13 +50,21 @@ jobs:
       - name: Install Ngrok
         shell: pwsh
         run: |
-          Invoke-WebRequest "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile "ngrok.zip"
-          Expand-Archive "ngrok.zip" "C:\ngrok" -Force
+          try {
+            Invoke-WebRequest "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile "ngrok.zip"
+            Expand-Archive "ngrok.zip" "C:\ngrok" -Force
+          } catch {
+            Write-Host "CANH BAO: Tai ngrok that bai"
+          }
 
       - name: Setup Ngrok
         shell: pwsh
         run: |
-          & "C:\ngrok\ngrok.exe" config add-authtoken "${{ secrets.NGROK_AUTH_TOKEN }}"
+          try {
+            & "C:\ngrok\ngrok.exe" config add-authtoken "${{ secrets.NGROK_AUTH_TOKEN }}"
+          } catch {
+            Write-Host "CANH BAO: Config ngrok that bai"
+          }
 
       - name: Create User
         shell: pwsh
@@ -72,6 +79,7 @@ jobs:
           Add-LocalGroupMember -Group "Administrators" -Member $user
           
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           
           "$user`n$pass" | Out-File "C:\rdpinfo.txt"
@@ -81,59 +89,70 @@ jobs:
       - name: Start Tunnel
         shell: pwsh
         run: |
-          # Start ngrok
-          Start-Process -FilePath "C:\ngrok\ngrok.exe" -ArgumentList "tcp 3389" -WindowStyle Hidden
+          $ngrokOk = $false
           
-          # Doi ngrok khoi dong (thu nhieu lan)
-          $maxTry = 10
-          $tunnels = $null
-          
-          for ($i = 1; $i -le $maxTry; $i++) {
-            Start-Sleep -Seconds 5
-            try {
-              $tunnels = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels" -ErrorAction Stop
-              Write-Host "Ngrok da san sang sau $i lan thu"
-              break
-            } catch {
-              Write-Host "Thu lan $i..."
+          try {
+            Start-Process -FilePath "C:\ngrok\ngrok.exe" -ArgumentList "tcp 3389" -WindowStyle Hidden
+            Start-Sleep -Seconds 10
+            
+            for ($i = 1; $i -le 15; $i++) {
+              Start-Sleep -Seconds 3
+              try {
+                $tunnels = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels" -ErrorAction Stop
+                $ngrokOk = $true
+                break
+              } catch {}
             }
+          } catch {
+            Write-Host "CANH BAO: Khong start duoc ngrok"
           }
-          
-          if ($null -eq $tunnels) {
-            Write-Error "LOI: Khong ket noi duoc ngrok sau $maxTry lan thu"
-            exit 1
-          }
-          
-          $url = $tunnels.tunnels[0].public_url -replace "tcp://",""
-          $parts = $url -split ":"
           
           $info = Get-Content "C:\rdpinfo.txt"
           $user = $info[0]
           $pass = $info[1]
           
-          Write-Host ""
-          Write-Host "============================"
-          Write-Host "🚀 SERVER HRGBVN PRO"
-          Write-Host "${{ env.SUBTITLE }}"
-          Write-Host "============================"
-          Write-Host "Host: $($parts[0])"
-          Write-Host "Port: $($parts[1])"
-          Write-Host "User: $user"
-          Write-Host "Pass: $pass"
-          Write-Host "Time: ${{ github.event.inputs.duration }}h"
-          Write-Host "============================"
-
-      - name: Run
-        shell: pwsh
-        run: |
+          if ($ngrokOk) {
+            $url = $tunnels.tunnels[0].public_url -replace "tcp://",""
+            $parts = $url -split ":"
+            
+            Write-Host ""
+            Write-Host "============================"
+            Write-Host "🚀 SERVER HRGBVN PRO - OK"
+            Write-Host "${{ env.SUBTITLE }}"
+            Write-Host "============================"
+            Write-Host "Host: $($parts[0])"
+            Write-Host "Port: $($parts[1])"
+            Write-Host "User: $user"
+            Write-Host "Pass: $pass"
+            Write-Host "Time: ${{ github.event.inputs.duration }}h"
+            Write-Host "============================"
+          } else {
+            Write-Host ""
+            Write-Host "============================"
+            Write-Host "🚀 SERVER HRGBVN PRO"
+            Write-Host "${{ env.SUBTITLE }}"
+            Write-Host "============================"
+            Write-Host "CANH BAO: Ngrok khong hoat dong"
+            Write-Host "RDP van chay tren may local"
+            Write-Host "User: $user"
+            Write-Host "Pass: $pass"
+            Write-Host "Time: ${{ github.event.inputs.duration }}h"
+            Write-Host "============================"
+          }
+          
+          # LUON CHAY DU THOI GIAN
           $h = [int]"${{ github.event.inputs.duration }}"
           $end = (Get-Date).AddHours($h)
+          Write-Host "Bat dau giu may chay trong $h gio..."
+          
           while ((Get-Date) -lt $end) {
-            Start-Sleep -Seconds 300
+            Start-Sleep -Seconds 60
             Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue 2>$null
             $remain = $end - (Get-Date)
-            Write-Host "Con: $($remain.ToString('hh\:mm\:ss'))"
+            Write-Host "Con lai: $($remain.ToString('hh\:mm\:ss'))"
           }
+          
+          Write-Host "Het thoi gian!"
 
       - name: Cleanup
         if: always()
