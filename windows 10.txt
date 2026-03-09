@@ -1,0 +1,179 @@
+name: server HRGBVN PRO 🚀
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: '⏱️ Thời gian chạy (1-6 giờ)'
+        required: true
+        default: '1'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+          - '4'
+          - '5'
+          - '6'
+
+env:
+  SUBTITLE: "MADE BY : Nguyễn Chí Dự"
+
+jobs:
+  build:
+    runs-on: windows-2019  # Windows Server 2019 (tương đương Windows 10)
+    timeout-minutes: 360
+    
+    steps:
+      - name: 🎯 Initialize HRGBVN PRO Server
+        run: |
+          echo "::group::🚀 SERVER HRGBVN PRO"
+          echo "🎯 Name: server HRGBVN PRO 🚀"
+          echo "📝 ${{ env.SUBTITLE }}"
+          echo "💻 OS: Windows 10 (Server 2019)"
+          echo "⏱️ Duration: ${{ github.event.inputs.duration }} hour(s)"
+          echo "::endgroup::"
+
+      - name: 🧹 System Cleanup & Optimization
+        run: |
+          echo "::group::🧹 Dọn dẹp hệ thống"
+          # Disable telemetry and heavy services
+          Stop-Service -Name "DiagTrack" -Force -ErrorAction SilentlyContinue
+          Stop-Service -Name "dmwappushservice" -Force -ErrorAction SilentlyContinue
+          Set-Service -Name "DiagTrack" -StartupType Disabled -ErrorAction SilentlyContinue
+          Set-Service -Name "dmwappushservice" -StartupType Disabled -ErrorAction SilentlyContinue
+          
+          # Disable Windows Search (save RAM)
+          Stop-Service -Name "WSearch" -Force -ErrorAction SilentlyContinue
+          Set-Service -Name "WSearch" -StartupType Disabled -ErrorAction SilentlyContinue
+          
+          # Disable Superfetch/SysMain
+          Stop-Service -Name "SysMain" -Force -ErrorAction SilentlyContinue
+          Set-Service -Name "SysMain" -StartupType Disabled -ErrorAction SilentlyContinue
+          
+          # Clean temp files
+          Remove-Item -Path "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
+          
+          # Clear logs
+          wevtutil el | Foreach-Object { wevtutil cl "$_" } 2>$null
+          
+          echo "✅ System optimized for Windows 10!"
+          echo "::endgroup::"
+
+      - name: 📥 Download Ngrok
+        run: |
+          echo "::group::📥 Cài đặt Ngrok"
+          Invoke-WebRequest -Uri "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile "ngrok.zip"
+          Expand-Archive -Path "ngrok.zip" -DestinationPath "C:\ngrok" -Force
+          [Environment]::SetEnvironmentVariable("Path", $env:Path + ";C:\ngrok", "Machine")
+          echo "✅ Ngrok downloaded!"
+          echo "::endgroup::"
+
+      - name: 🔑 Configure Ngrok
+        run: |
+          echo "::group::🔑 Cấu hình Ngrok"
+          C:\ngrok\ngrok.exe config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+          echo "✅ Ngrok authenticated!"
+          echo "::endgroup::"
+
+      - name: 🖥️ Setup RDP & User
+        run: |
+          echo "::group::🖥️ Thiết lập RDP"
+          # Create user
+          $password = "HRGBVN@2024"
+          net user HRGBVN $password /add /y
+          net localgroup administrators HRGBVN /add
+          
+          # Enable RDP
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+          
+          # Optimize for lightweight performance
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "MaxCompressionLevel" -Value 2
+          
+          echo "✅ RDP configured!"
+          echo "👤 Username: HRGBVN"
+          echo "🔒 Password: $password"
+          echo "::endgroup::"
+
+      - name: 🌐 Start Ngrok Tunnel
+        run: |
+          echo "::group::🌐 Khởi động Ngrok"
+          Start-Process -FilePath "C:\ngrok\ngrok.exe" -ArgumentList "tcp 3389" -WindowStyle Hidden
+          Start-Sleep -Seconds 10
+          
+          # Get public URL
+          $response = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels"
+          $publicUrl = $response.tunnels[0].public_url
+          $hostPort = $publicUrl -replace "tcp://", ""
+          $parts = $hostPort -split ":"
+          $host = $parts[0]
+          $port = $parts[1]
+          
+          echo "::group::🎉 THÔNG TIN KẾT NỐI"
+          echo "═══════════════════════════════════════"
+          echo "🚀 SERVER HRGBVN PRO - WINDOWS 10"
+          echo "📝 ${{ env.SUBTITLE }}"
+          echo "═══════════════════════════════════════"
+          echo "🌐 Địa chỉ: $host"
+          echo "🔌 Cổng: $port"
+          echo "👤 Username: HRGBVN"
+          echo "🔒 Password: HRGBVN@2024"
+          echo "⏱️ Thời gian: ${{ github.event.inputs.duration }} giờ"
+          echo "═══════════════════════════════════════"
+          echo "💡 Hướng dẫn: Mở Remote Desktop Connection"
+          echo "   Nhập: $host:$port"
+          echo "═══════════════════════════════════════"
+          echo "::endgroup::"
+          
+          # Save info
+          @"
+          SERVER HRGBVN PRO - WINDOWS 10
+          ${{ env.SUBTITLE }}
+          
+          Host: $host
+          Port: $port
+          Username: HRGBVN
+          Password: HRGBVN@2024
+          Duration: ${{ github.event.inputs.duration }} hours
+          
+          Created: $(Get-Date)
+          "@ | Out-File -FilePath "C:\Users\HRGBVN\Desktop\CONNECTION_INFO.txt" -Encoding UTF8
+
+      - name: ⏳ Keep Alive & Auto Cleanup
+        run: |
+          $duration = [int]${{ github.event.inputs.duration }}
+          $endTime = (Get-Date).AddHours($duration)
+          
+          echo "⏳ Server sẽ chạy đến: $endTime"
+          echo "🧹 Auto-cleanup mỗi 5 phút..."
+          
+          while ((Get-Date) -lt $endTime) {
+              Start-Sleep -Seconds 300
+              
+              # Memory optimization
+              Get-Process | Where-Object {$_.WorkingSet -gt 100MB} | ForEach-Object {
+                  try {
+                      $_.MinWorkingSet = [IntPtr]::Zero
+                  } catch {}
+              }
+              
+              # Clean temp
+              Remove-Item -Path "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue 2>$null
+              
+              $remaining = $endTime - (Get-Date)
+              Write-Host "⏱️ Còn lại: $($remaining.ToString('hh\:mm\:ss')) - Đã dọn dẹp RAM"
+          }
+          
+          echo "⏰ Hết thời gian! Đang dọn dẹp..."
+
+      - name: 🧹 Final Cleanup
+        if: always()
+        run: |
+          echo "🧹 Dọn dẹp cuối cùng..."
+          Stop-Process -Name "ngrok" -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "C:\ngrok" -Recurse -Force -ErrorAction SilentlyContinue
+          net user HRGBVN /delete -ErrorAction SilentlyContinue
+          echo "✅ Đã dọn dẹp xong!"
