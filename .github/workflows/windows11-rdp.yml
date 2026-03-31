@@ -9,24 +9,25 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Install Chocolatey & Ngrok
+      - name: Download & Setup Ngrok
         run: |
-          Write-Host "Đang cài Chocolatey và Ngrok..." -ForegroundColor Cyan
+          Write-Host "Đang tải Ngrok trực tiếp..." -ForegroundColor Cyan
           
-          # Cài Chocolatey nếu chưa có
-          if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
-            Set-ExecutionPolicy Bypass -Scope Process -Force
-            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-            iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+          # Tải ngrok trực tiếp từ trang chủ
+          $ngrokUrl = "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip"
+          Invoke-WebRequest -Uri $ngrokUrl -OutFile "ngrok.zip"
+          
+          # Giải nén
+          Expand-Archive -Path "ngrok.zip" -DestinationPath "." -Force
+          
+          # Kiểm tra ngrok đã tải thành công chưa
+          if (Test-Path ".\ngrok.exe") {
+            Write-Host "✅ Ngrok đã tải thành công!" -ForegroundColor Green
+            .\ngrok.exe version
+          } else {
+            Write-Host "❌ Lỗi: Không tìm thấy ngrok.exe" -ForegroundColor Red
+            exit 1
           }
-          
-          # Cài ngrok qua Chocolatey
-          choco install ngrok -y --version=3.37.3
-          
-          # Copy ngrok.exe ra thư mục hiện tại để dễ dùng
-          Copy-Item "C:\ProgramData\chocolatey\bin\ngrok.exe" -Destination ".\ngrok.exe" -Force
-          
-          Write-Host "✅ Ngrok đã cài thành công!" -ForegroundColor Green
 
       - name: Auth ngrok
         env:
@@ -129,6 +130,7 @@ jobs:
           }
           catch {
             Write-Host "❌ Không thể lấy thông tin tunnel. Kiểm tra ngrok manually!" -ForegroundColor Red
+            Write-Host "Truy cập http://localhost:4040 để xem thông tin tunnel" -ForegroundColor Yellow
           }
           
           # Giữ workflow chạy
