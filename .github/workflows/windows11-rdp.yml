@@ -46,14 +46,27 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-          # Tạo mật khẩu RANDOM mạnh
+          # === TẮT PASSWORD POLICY NGHIÊM NGẶT ===
+          Write-Host "🔓 Đang tắt chính sách mật khẩu nghiêm ngặt..." -ForegroundColor Yellow
+          secedit /export /cfg C:\secpol.cfg
+          (Get-Content C:\secpol.cfg) -replace "PasswordComplexity = 1", "PasswordComplexity = 0" | Set-Content C:\secpol.cfg
+          (Get-Content C:\secpol.cfg) -replace "MinimumPasswordLength = \d+", "MinimumPasswordLength = 0" | Set-Content C:\secpol.cfg
+          secedit /configure /db secedit.sdb /cfg C:\secpol.cfg /areas SECURITYPOLICY
+          Remove-Item C:\secpol.cfg -Force
+
+          net accounts /minpwlen:0 /maxpwage:unlimited
+
+          # Tạo mật khẩu SIÊU MẠNH (20 ký tự, đủ 4 loại)
           Add-Type -AssemblyName System.Web
-          $pw = [System.Web.Security.Membership]::GeneratePassword(18, 5)
+          $pw = [System.Web.Security.Membership]::GeneratePassword(20, 6)
+          # Đảm bảo có ít nhất 1 ký tự mỗi loại
+          $pw = $pw + "A1@z"   # Thêm ký tự chắc chắn nếu cần
+
           Write-Host "=====================================" -ForegroundColor Cyan
-          Write-Host "🔑 USERNAME : Nguyen Chi Du - VIP" -ForegroundColor Green
+          Write-Host "👤 USERNAME : Nguyen Chi Du - VIP" -ForegroundColor Green
           Write-Host "🔑 PASSWORD : $pw" -ForegroundColor Yellow
           Write-Host "=====================================" -ForegroundColor Cyan
-          Write-Host "⚠️  HÃY COPY MẬT KHẨU NGAY TRƯỚC KHI THOÁT!" -ForegroundColor Red
+          Write-Host "⚠️  COPY NGAY MẬT KHẨU TRƯỚC KHI THOÁT!" -ForegroundColor Red
           Write-Host "=====================================" -ForegroundColor Cyan
 
           # Tạo user VIP
@@ -99,9 +112,6 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\TermDD' -Name "FlowControlDisable" -Value 1 -ErrorAction SilentlyContinue
           Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name "SystemResponsiveness" -Value 0 -ErrorAction SilentlyContinue
 
-          Write-Host "=====================================" -ForegroundColor Green
           Write-Host "✅ SERVER PREMIUM HRGBVN PRO ĐÃ SẴN SÀNG!" -ForegroundColor Green
           Write-Host "👤 Username: Nguyen Chi Du - VIP" -ForegroundColor Cyan
-          Write-Host "🔑 Password: Đã hiển thị ở trên" -ForegroundColor Cyan
-          Write-Host "🌐 Ngrok Tunnel sẽ hiện ở bước sau..." -ForegroundColor Cyan
-          Write-Host "=====================================" -ForegroundColor Green
+          Write-Host "🔑 Password: Đã hiển thị phía trên" -ForegroundColor Cyan
