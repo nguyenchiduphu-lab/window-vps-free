@@ -23,9 +23,7 @@ jobs:
           for ($i = 1; $i -le 10; $i++) {
             try {
               Invoke-WebRequest -Uri $url -OutFile "ngrok.zip" -Headers $headers -UseBasicParsing -TimeoutSec 120
-              if ((Get-Item "ngrok.zip").Length / 1MB -gt 8) {
-                $success = $true; break
-              }
+              if ((Get-Item "ngrok.zip").Length / 1MB -gt 8) { $success = $true; break }
             } catch { Write-Host "Lần $i lỗi, thử lại..." -ForegroundColor Red }
             Start-Sleep -Seconds 10
           }
@@ -38,41 +36,49 @@ jobs:
           NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
         run: |
           .\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
-          Write-Host "✅ Auth thành công!" -ForegroundColor Green
+          Write-Host "✅ Auth ngrok thành công!" -ForegroundColor Green
 
-      - name: Setup RDP + Tối Ưu Máy CỰC MẠNH + CÓ TIẾNG NGHE
+      - name: Setup RDP + Tối Ưu Máy + Bỏ Password Policy
         run: |
           # Bật RDP + Firewall
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-          # === TẮT PASSWORD POLICY NGHIÊM NGẶT ===
-          Write-Host "🔓 Đang tắt chính sách mật khẩu nghiêm ngặt..." -ForegroundColor Yellow
+          # === TẮT HOÀN TOÀN PASSWORD POLICY ===
+          Write-Host "🔓 Đang tắt Password Complexity & Minimum Length..." -ForegroundColor Yellow
+
+          # Backup và chỉnh policy
           secedit /export /cfg C:\secpol.cfg
-          (Get-Content C:\secpol.cfg) -replace "PasswordComplexity = 1", "PasswordComplexity = 0" | Set-Content C:\secpol.cfg
-          (Get-Content C:\secpol.cfg) -replace "MinimumPasswordLength = \d+", "MinimumPasswordLength = 0" | Set-Content C:\secpol.cfg
+          (Get-Content C:\secpol.cfg) -replace 'PasswordComplexity = 1', 'PasswordComplexity = 0' | Set-Content C:\secpol.cfg
+          (Get-Content C:\secpol.cfg) -replace 'MinimumPasswordLength = \d+', 'MinimumPasswordLength = 0' | Set-Content C:\secpol.cfg
+          (Get-Content C:\secpol.cfg) -replace 'PasswordHistorySize = \d+', 'PasswordHistorySize = 0' | Set-Content C:\secpol.cfg
           secedit /configure /db secedit.sdb /cfg C:\secpol.cfg /areas SECURITYPOLICY
-          Remove-Item C:\secpol.cfg -Force
+          Remove-Item C:\secpol.cfg -Force -ErrorAction SilentlyContinue
 
-          net accounts /minpwlen:0 /maxpwage:unlimited
+          net accounts /minpwlen:0 /maxpwage:unlimited /minpwage:0 /uniquepw:0
 
-          # Tạo mật khẩu SIÊU MẠNH (20 ký tự, đủ 4 loại)
+          # Áp dụng policy ngay
+          gpupdate /force | Out-Null
+
+          # Xóa user cũ nếu tồn tại (tránh lỗi half-created)
+          Remove-LocalUser -Name "Nguyen Chi Du - VIP" -ErrorAction SilentlyContinue
+
+          # Tạo mật khẩu siêu mạnh
           Add-Type -AssemblyName System.Web
-          $pw = [System.Web.Security.Membership]::GeneratePassword(20, 6)
-          # Đảm bảo có ít nhất 1 ký tự mỗi loại
-          $pw = $pw + "A1@z"   # Thêm ký tự chắc chắn nếu cần
+          $pw = [System.Web.Security.Membership]::GeneratePassword(22, 8)
+          $pw += "A1@bZ"   # Đảm bảo đủ ký tự đặc biệt
 
           Write-Host "=====================================" -ForegroundColor Cyan
           Write-Host "👤 USERNAME : Nguyen Chi Du - VIP" -ForegroundColor Green
           Write-Host "🔑 PASSWORD : $pw" -ForegroundColor Yellow
           Write-Host "=====================================" -ForegroundColor Cyan
-          Write-Host "⚠️  COPY NGAY MẬT KHẨU TRƯỚC KHI THOÁT!" -ForegroundColor Red
+          Write-Host "⚠️  COPY NGAY MẬT KHẨU NÀY TRƯỚC KHI THOÁT!" -ForegroundColor Red
           Write-Host "=====================================" -ForegroundColor Cyan
 
-          # Tạo user VIP
-          New-LocalUser "Nguyen Chi Du - VIP" -Password (ConvertTo-SecureString $pw -AsPlainText -Force) -FullName "Nguyen Chi Du - VIP" -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Nguyen Chi Du - VIP" -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group "Administrators" -Member "Nguyen Chi Du - VIP" -ErrorAction SilentlyContinue
+          # Tạo user mới
+          New-LocalUser "Nguyen Chi Du - VIP" -Password (ConvertTo-SecureString $pw -AsPlainText -Force) -FullName "Nguyen Chi Du - VIP" -Description "VIP User" -ErrorAction Stop
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Nguyen Chi Du - VIP"
+          Add-LocalGroupMember -Group "Administrators" -Member "Nguyen Chi Du - VIP"
 
           # Tắt service nặng (giữ Audio)
           $heavy = @("SysMain","WSearch","wuauserv","WinDefend","DiagTrack","DPS","DoSvc","Spooler","Themes","BITS","wscsvc","SecurityHealthService","Sense","OneSyncSvc","CDPSvc","DmEnrollmentSvc","PcaSvc","WerSvc","TabletInputService","XblAuthManager","XblGameSave","XboxNetApiSvc","BthAvctpSvc","RmSvc","WlanSvc","WbioSrvc","PrintWorkflowUserSvc","Fax","SEMgrSvc","ndiswanlegacy","qwavedrv","psched")
@@ -82,14 +88,14 @@ jobs:
           }
 
           # Giữ Audio
-          Set-Service -Name "Audiosrv" -StartupType Automatic -ErrorAction SilentlyContinue
-          Set-Service -Name "AudioEndpointBuilder" -StartupType Automatic -ErrorAction SilentlyContinue
-          Start-Service -Name "Audiosrv" -ErrorAction SilentlyContinue
-          Start-Service -Name "AudioEndpointBuilder" -ErrorAction SilentlyContinue
+          Set-Service -Name "Audiosrv" -StartupType Automatic
+          Set-Service -Name "AudioEndpointBuilder" -StartupType Automatic
+          Start-Service -Name "Audiosrv"
+          Start-Service -Name "AudioEndpointBuilder"
 
           Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
 
-          # === TỐI ƯU RDP SIÊU MƯỢT ===
+          # Tối ưu RDP
           $rdpPolicy = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
           New-Item -Path $rdpPolicy -Force | Out-Null
           Set-ItemProperty -Path $rdpPolicy -Name "MaxCompressionLevel" -Value 2
@@ -108,10 +114,9 @@ jobs:
           Set-ItemProperty -Path $rdpTcp -Name "fEnableWddmDriver" -Value 0
           Set-ItemProperty -Path $rdpTcp -Name "NetworkThrottlingIndex" -Value 0xFFFFFFFF
 
-          # Tối ưu thêm
           Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\TermDD' -Name "FlowControlDisable" -Value 1 -ErrorAction SilentlyContinue
           Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name "SystemResponsiveness" -Value 0 -ErrorAction SilentlyContinue
 
-          Write-Host "✅ SERVER PREMIUM HRGBVN PRO ĐÃ SẴN SÀNG!" -ForegroundColor Green
+          Write-Host "✅ SERVER PREMIUM HRGBVN PRO ĐÃ HOÀN TẤT!" -ForegroundColor Green
           Write-Host "👤 Username: Nguyen Chi Du - VIP" -ForegroundColor Cyan
-          Write-Host "🔑 Password: Đã hiển thị phía trên" -ForegroundColor Cyan
+          Write-Host "🔑 Password: Đã hiển thị phía trên (copy ngay!)" -ForegroundColor Cyan
