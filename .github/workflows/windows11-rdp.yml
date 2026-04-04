@@ -9,83 +9,66 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Download ngrok (Direct Stable + Strong User-Agent)
+      - name: Set Timezone to Vietnam (Asia/Ho_Chi_Minh)
+        uses: szenius/set-timezone@v2.0
+        with:
+          timezoneWindows: "SE Asia Standard Time"
+
+      - name: Download ngrok
         run: |
-          Write-Host "🔄 Đang tải ngrok trực tiếp (cách mạnh nhất hiện tại)..." -ForegroundColor Cyan
-          
+          Write-Host "🔄 Đang tải ngrok..." -ForegroundColor Cyan
           $url = "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip"
-          
-          $headers = @{
-            "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
-            "Accept" = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
-          }
-          
-          $zipFile = "ngrok.zip"
+          $headers = @{ "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" }
           $success = $false
-          
-          for ($i = 1; $i -le 8; $i++) {
+          for ($i = 1; $i -le 10; $i++) {
             try {
-              Write-Host "Thử tải lần $i/8 ..." -ForegroundColor Yellow
-              
-              Invoke-WebRequest -Uri $url -OutFile $zipFile -Headers $headers -UseBasicParsing -TimeoutSec 90 -MaximumRetryCount 3
-              
-              if (Test-Path $zipFile) {
-                $sizeMB = (Get-Item $zipFile).Length / 1MB
-                if ($sizeMB -gt 8) {
-                  Write-Host "✅ Tải thành công! Size: $([math]::Round($sizeMB, 2)) MB" -ForegroundColor Green
-                  $success = $true
-                  break
-                } else {
-                  Write-Host "File quá nhỏ ($([math]::Round($sizeMB, 2)) MB), thử lại..." -ForegroundColor Red
-                  Remove-Item $zipFile -Force
-                }
+              Invoke-WebRequest -Uri $url -OutFile "ngrok.zip" -Headers $headers -UseBasicParsing -TimeoutSec 120
+              if ((Get-Item "ngrok.zip").Length / 1MB -gt 8) {
+                $success = $true; break
               }
-            } catch {
-              Write-Host "❌ Lần $i lỗi: $($_.Exception.Message)" -ForegroundColor Red
-            }
-            Start-Sleep -Seconds 12
+            } catch { Write-Host "Lần $i lỗi, thử lại..." -ForegroundColor Red }
+            Start-Sleep -Seconds 10
           }
-          
-          if (-not $success) {
-            Write-Host "❌ Không tải được ngrok. Có thể ngrok đang chặn IP của GitHub Actions." -ForegroundColor Red
-            exit 1
-          }
-          
-          Expand-Archive $zipFile -DestinationPath . -Force
-          Write-Host "✅ Giải nén ngrok thành công!" -ForegroundColor Green
+          if (-not $success) { exit 1 }
+          Expand-Archive "ngrok.zip" -DestinationPath . -Force
+          Write-Host "✅ Ngrok sẵn sàng!" -ForegroundColor Green
 
       - name: Auth ngrok
         env:
           NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
         run: |
-          if (Test-Path ".\ngrok.exe") {
-            .\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
-            Write-Host "✅ Auth ngrok thành công!" -ForegroundColor Green
-          } else {
-            Write-Host "❌ Không tìm thấy ngrok.exe!" -ForegroundColor Red
-            exit 1
-          }
+          .\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
+          Write-Host "✅ Auth thành công!" -ForegroundColor Green
 
-      - name: Setup RDP + Max Fast + Reduce Lag Cực Mạnh + CÓ TIẾNG NGHE
+      - name: Setup RDP + Tối Ưu Máy CỰC MẠNH + CÓ TIẾNG NGHE
         run: |
-          # Bật RDP
+          # Bật RDP + Firewall
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-          # Tạo user VIP
-          $pw = "#H%UxZG%66OP"
-          New-LocalUser "NGUYEN CHI DU" -Password (ConvertTo-SecureString $pw -AsPlainText -Force) -FullName "NGUYEN CHI DU VIP" -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "NGUYEN CHI DU" -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group "Administrators" -Member "NGUYEN CHI DU" -ErrorAction SilentlyContinue
+          # Tạo mật khẩu RANDOM mạnh
+          Add-Type -AssemblyName System.Web
+          $pw = [System.Web.Security.Membership]::GeneratePassword(18, 5)
+          Write-Host "=====================================" -ForegroundColor Cyan
+          Write-Host "🔑 USERNAME : Nguyen Chi Du - VIP" -ForegroundColor Green
+          Write-Host "🔑 PASSWORD : $pw" -ForegroundColor Yellow
+          Write-Host "=====================================" -ForegroundColor Cyan
+          Write-Host "⚠️  HÃY COPY MẬT KHẨU NGAY TRƯỚC KHI THOÁT!" -ForegroundColor Red
+          Write-Host "=====================================" -ForegroundColor Cyan
 
-          # Tắt service nặng, giữ Audio
-          $heavy = @("SysMain","WSearch","wuauserv","WinDefend","DiagTrack","DPS","DoSvc","Spooler","Themes","BITS","SecurityHealthService","Sense","OneSyncSvc","CDPSvc","WerSvc","XblAuthManager","XblGameSave","XboxNetApiSvc","WlanSvc")
+          # Tạo user VIP
+          New-LocalUser "Nguyen Chi Du - VIP" -Password (ConvertTo-SecureString $pw -AsPlainText -Force) -FullName "Nguyen Chi Du - VIP" -ErrorAction SilentlyContinue
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Nguyen Chi Du - VIP" -ErrorAction SilentlyContinue
+          Add-LocalGroupMember -Group "Administrators" -Member "Nguyen Chi Du - VIP" -ErrorAction SilentlyContinue
+
+          # Tắt service nặng (giữ Audio)
+          $heavy = @("SysMain","WSearch","wuauserv","WinDefend","DiagTrack","DPS","DoSvc","Spooler","Themes","BITS","wscsvc","SecurityHealthService","Sense","OneSyncSvc","CDPSvc","DmEnrollmentSvc","PcaSvc","WerSvc","TabletInputService","XblAuthManager","XblGameSave","XboxNetApiSvc","BthAvctpSvc","RmSvc","WlanSvc","WbioSrvc","PrintWorkflowUserSvc","Fax","SEMgrSvc","ndiswanlegacy","qwavedrv","psched")
           foreach ($s in $heavy) {
             Stop-Service -Name $s -Force -ErrorAction SilentlyContinue
             Set-Service -Name $s -StartupType Disabled -ErrorAction SilentlyContinue
           }
 
-          # Audio
+          # Giữ Audio
           Set-Service -Name "Audiosrv" -StartupType Automatic -ErrorAction SilentlyContinue
           Set-Service -Name "AudioEndpointBuilder" -StartupType Automatic -ErrorAction SilentlyContinue
           Start-Service -Name "Audiosrv" -ErrorAction SilentlyContinue
@@ -93,50 +76,32 @@ jobs:
 
           Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
 
-          # Intro
-          Write-Host ""
-          Write-Host "╔════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-          Write-Host "║       SERVER PREMIUM HRGBVN PRO 🚀                ║" -ForegroundColor Magenta
-          Write-Host "║  ✅ CÓ TIẾNG NGHE - SIÊU MƯỢT - GIẢM LAG CỰC MẠNH  ║" -ForegroundColor Green
-          Write-Host "║  Username → NGUYEN CHI DU                          ║" -ForegroundColor Yellow
-          Write-Host "║  Password → #H%UxZG%66OP                           ║" -ForegroundColor Yellow
-          Write-Host "╚════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+          # === TỐI ƯU RDP SIÊU MƯỢT ===
+          $rdpPolicy = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
+          New-Item -Path $rdpPolicy -Force | Out-Null
+          Set-ItemProperty -Path $rdpPolicy -Name "MaxCompressionLevel" -Value 2
+          Set-ItemProperty -Path $rdpPolicy -Name "MinEncryptionLevel" -Value 1
+          Set-ItemProperty -Path $rdpPolicy -Name "NegotiateSecurityLayer" -Value 0
+          Set-ItemProperty -Path $rdpPolicy -Name "fDisableCdm" -Value 1
+          Set-ItemProperty -Path $rdpPolicy -Name "fEnableAudioCapture" -Value 1
+          Set-ItemProperty -Path $rdpPolicy -Name "fDisableAudioCapture" -Value 0
+          Set-ItemProperty -Path $rdpPolicy -Name "fDisableAudioRedirection" -Value 0
+          Set-ItemProperty -Path $rdpPolicy -Name "fMinBandwidth" -Value 0
 
-      - name: Start Ngrok Tunnel - VIP PRO Flash Mode
-        run: |
-          Write-Host ""
-          Write-Host "╔════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-          Write-Host "║   🚀 SERVER PREMIUM HRGBVN PRO - NGROK STARTING    ║" -ForegroundColor Magenta
-          Write-Host "╚════════════════════════════════════════════════════╝" -ForegroundColor Cyan
-          
-          # Start ngrok tunnel for RDP (port 3389)
-          Start-Process -FilePath ".\ngrok.exe" -ArgumentList "tcp 3389" -WindowStyle Hidden
-          
-          # Wait for ngrok to initialize
-          Start-Sleep -Seconds 10
-          
-          # Get ngrok tunnel info
-          try {
-            $tunnelInfo = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels" -ErrorAction SilentlyContinue
-            if ($tunnelInfo.tunnels) {
-              $publicUrl = $tunnelInfo.tunnels[0].public_url
-              Write-Host ""
-              Write-Host "🌐 ĐỊA CHỈ KẾT NỐI RDP:" -ForegroundColor Green
-              Write-Host "   $publicUrl" -ForegroundColor Yellow
-              Write-Host ""
-              Write-Host "💻 Thông tin đăng nhập:" -ForegroundColor Cyan
-              Write-Host "   Username: NGUYEN CHI DU" -ForegroundColor White
-              Write-Host "   Password: #H%UxZG%66OP" -ForegroundColor White
-              Write-Host ""
-              Write-Host "⏱️  Phiên làm việc sẽ kéo dài 360 phút (6 giờ)" -ForegroundColor Gray
-            }
-          } catch {
-            Write-Host "⚠️  Không thể lấy thông tin tunnel từ API" -ForegroundColor Yellow
-          }
-          
-          # Keep the job running
-          Write-Host ""
-          Write-Host "🔴 Server đang chạy... Nhấn Ctrl+C để dừng" -ForegroundColor Red
-          while ($true) {
-            Start-Sleep -Seconds 60
-          }
+          $rdpTcp = 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
+          Set-ItemProperty -Path $rdpTcp -Name "ColorDepth" -Value 4
+          Set-ItemProperty -Path $rdpTcp -Name "fEnableThinClient" -Value 1
+          Set-ItemProperty -Path $rdpTcp -Name "fEnableDesktopComposition" -Value 0
+          Set-ItemProperty -Path $rdpTcp -Name "fEnableWddmDriver" -Value 0
+          Set-ItemProperty -Path $rdpTcp -Name "NetworkThrottlingIndex" -Value 0xFFFFFFFF
+
+          # Tối ưu thêm
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\TermDD' -Name "FlowControlDisable" -Value 1 -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name "SystemResponsiveness" -Value 0 -ErrorAction SilentlyContinue
+
+          Write-Host "=====================================" -ForegroundColor Green
+          Write-Host "✅ SERVER PREMIUM HRGBVN PRO ĐÃ SẴN SÀNG!" -ForegroundColor Green
+          Write-Host "👤 Username: Nguyen Chi Du - VIP" -ForegroundColor Cyan
+          Write-Host "🔑 Password: Đã hiển thị ở trên" -ForegroundColor Cyan
+          Write-Host "🌐 Ngrok Tunnel sẽ hiện ở bước sau..." -ForegroundColor Cyan
+          Write-Host "=====================================" -ForegroundColor Green
